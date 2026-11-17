@@ -10,6 +10,7 @@ const end = source.indexOf('// END CLIENT CORE');
 assert.ok(start >= 0 && end > start, 'testable pure core markers exist');
 const coreProgram = `${source.slice(start, end)}\n({
   safeQrSource, liveLogin, deriveLoginView, deriveFeedback, pairingBlock, validSnapshot, bridgeError, errorKey, createApi, createController,
+  createChannelApi, parseChannelConfig,
 });`;
 const core = vm.runInNewContext(coreProgram, { AbortController, setTimeout, clearTimeout, Date });
 
@@ -94,9 +95,110 @@ test('browser artifact is a lazy factory with React as its only runtime import',
   assert.deepEqual(imports, ['react']);
   assert.doesNotMatch(source, /window\.confirm|dangerouslySetInnerHTML|createPortal|document\.body|localStorage|sessionStorage/);
   assert.doesNotMatch(source, /<iframe|<script|https?:\/\//);
-  assert.match(source, /inject: \['slots', 'locale'\]/);
-  assert.match(source, /id: 'weixin-bridge', order: 25, label: \(\) => t\('title'\)/);
-  assert.match(source, /ctx\.slots\.inject\('settings\.section\.icon'/);
+  assert.match(source, /inject: \['slots', 'locale', 'uiWorkspace'\]/);
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'));
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'));
+});
+
+test('opens bridge conversations using DSH workspace navigation for tool approvals', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-workspace'));
+  assert.match(source, /ctx\.uiWorkspace\.openSession\(sessionId\)/);
+  assert.match(source, /h\(ChannelSessions, \{ sessions: selected\.sessions \}\)/);
+});
+
+test('client contributes a single page after Automation tasks through the official navigation slots', () => {
+  let registration;
+  vm.runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value; } } } });
+  const module = registration.factory(() => ({ createElement() {} }));
+  const slots = new Map();
+  module.apply({
+    effect: effect => effect(),
+    locale: { register() {}, bind: () => key => key },
+    slots: {
+      inject(name, register) {
+        const before = slots.size;
+        register();
+        assert.equal(slots.size, before + 1);
+        assert.equal(slots.get(name).name, name);
+      },
+      register(options, component) {
+        slots.set(options.name, options);
+        assert.equal(typeof component, 'function');
+      },
+    },
+  });
+  assert.deepEqual([...slots.keys()], ['main', 'sidebar.panellist']);
+  assert.equal(slots.get('main').key, slots.get('sidebar.panellist').id);
+  assert.equal(slots.get('sidebar.panellist').order, 20);
+  assert.equal(slots.get('sidebar.panellist').label(), 'channels.title');
+});
+
+test('channel detail exposes a left-aligned parent button and a single channel heading', () => {
+  assert.match(source, /h\('button', \{\s*type: 'button', className: 'wxb-crumb', 'aria-label': t\('channels.back'\),[\s\S]*?t\('channels.title'\)\)/);
+  assert.match(source, /h\(ChannelDetailHeader, \{ id: 'weixin', title: t\('title'\), headingRef,/);
+  assert.match(source, /h\(ChannelDetailHeader, \{ id: channel.id, title: channel.name, headingRef,/);
+  assert.match(source, /h\('h1', \{ id: 'wxb-main-title', className: 'wxb-channel-heading', ref: headingRef, tabIndex: -1 \},/);
+});
+
+test('channel navigation focuses the detail heading and restores the selected row and list scroll', () => {
+  assert.match(source, /page\.current\.scrollTop = 0;\s*detailHeading\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(source, /page\.current\.scrollTop = listScrollTop\.current;\s*rows\.current\.get\(lastSelected\.current\)\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(source, /listScrollTop\.current = page\.current\?\.scrollTop \?\? 0;[\s\S]*?setSelectedId\(channel\.id\)/);
+});
+
+test('channel controller aborts its owner request and cancels every timer on unmount', async () => {
+  const clock = fakeClock();
+  const { api, requests } = queueApi();
+  const store = core.createController(api, { clock });
+  const start = store.start();
+  store.stop();
+  assert.equal(requests[0].signal.aborted, true);
+  assert.equal(await start, false);
+  assert.deepEqual(clock.jobs, []);
+  requests[0].resolve({ channels: [] });
+  await flush();
+  assert.equal(store.getSnapshot().snapshot, null);
+});
+
+test('channel request sends write-only configuration and validates the status envelope', async () => {
+  const channel = {
+    id: 'telegram', name: 'Telegram', status: 'paused', configured: true, enabled: false,
+    allowedSenders: ['123'], accountVerification: 'pending',
+  };
+  const api = core.createChannelApi(async (url, init) => {
+    assert.equal(url, '/plugins/channel-bridge/api');
+    assert.equal(init.credentials, 'same-origin');
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.headers['X-DSH-Channel-Bridge'], '1');
+    assert.deepEqual(JSON.parse(init.body), { action: 'configure', id: 'telegram', config: { token: 'fake' } });
+    return { ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [channel] } }) };
+  });
+  const value = await api('configure', { id: 'telegram', config: { token: 'fake' } }, new AbortController().signal);
+  assert.deepEqual(value.channels, [channel]);
+  const malformed = core.createChannelApi(async () => ({
+    ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [{ ...channel, status: 'unknown' }] } }),
+  }));
+  await assert.rejects(malformed('status', {}, new AbortController().signal), error => error.bridgeKind === 'response');
+});
+
+test('catalog fields produce typed nested configuration and omit untouched defaults', () => {
+  const fields = [
+    { field: 'credentials.token', kind: 'secret', required: true },
+    { field: 'replyInThread', kind: 'bool' },
+    { field: 'options.tags', kind: 'list' },
+    { field: 'port', kind: 'int' },
+    { field: 'host', kind: 'string' },
+  ];
+  const config = core.parseChannelConfig(fields, {
+    'credentials.token': 'fake', replyInThread: 'false', 'options.tags': 'alpha\nbeta', port: '1234',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(config)), {
+    credentials: { token: 'fake' }, replyInThread: false, options: { tags: ['alpha', 'beta'] }, port: 1234,
+  });
+  assert.throws(() => core.parseChannelConfig(fields, { port: '1234' }), /required/);
+  assert.throws(() => core.parseChannelConfig([{ field: '__proto__.polluted', kind: 'string' }], { '__proto__.polluted': 'x' }), /field/);
+  assert.throws(() => core.parseChannelConfig(fields, { 'credentials.token': 'fake', port: '3.5' }), /number/);
 });
 
 test('locale resources and embedded runtime dictionaries remain identical', async () => {
@@ -129,7 +231,7 @@ test('interface styling uses only inspected alias theme variables', () => {
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\(/i);
   const tokens = [...css.matchAll(/var\((--[^), ]+)/g)].map(match => match[1]);
   const inspected = new Set([
-    '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-border-l2',
+    '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary', '--dsw-alias-border-l2',
     '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2',
     '--dsw-alias-brand-primary', '--dsw-alias-state-error-primary', '--dsw-alias-state-idle-primary',
     '--dsw-alias-state-success-primary', '--dsw-alias-state-warn-primary',
@@ -142,17 +244,39 @@ test('interface styling uses only inspected alias theme variables', () => {
   assert.match(css, /@media\(pointer:coarse\)/);
 });
 
-test('icon is bounded self-contained 36px geometry without a background tile', async () => {
+test('the plugin icon uses a bounded DSH-style tile and shares its glyph with the sidebar', async () => {
   const icon = await readFile(new URL('../icon.svg', import.meta.url), 'utf8');
   assert.match(icon, /width="36" height="36" viewBox="0 0 36 36"/);
-  assert.doesNotMatch(icon, /<(?:script|style|image|foreignObject|text|rect|animate)\b|\bon\w+=|href=/i);
+  assert.match(icon, /<rect x="6" y="6" width="24" height="24" rx="6" fill="url\(#channel-tile\)"\/>/);
+  assert.match(icon, /<linearGradient id="channel-tile"/);
+  assert.doesNotMatch(icon, /<(?:script|style|image|foreignObject|text|animate)\b|\bon\w+=|href=/i);
   const stack = [];
   for (const tag of icon.matchAll(/<(\/?)([\w:-]+)\b[^>]*?(\/?)>/g)) {
-    assert.ok(['svg', 'path'].includes(tag[2]));
+    assert.ok(['svg', 'defs', 'linearGradient', 'stop', 'rect', 'g', 'path', 'circle'].includes(tag[2]));
     if (tag[1]) assert.equal(stack.pop(), tag[2]);
     else if (!tag[3]) stack.push(tag[2]);
   }
   assert.equal(stack.length, 0);
+  const nav = source.slice(source.indexOf('function BridgeNavIcon'), source.indexOf('function LoginPanel'));
+  assert.match(nav, /viewBox: '0 0 24 24'/);
+  for (const [, glyph] of icon.matchAll(/<path d="([^"]*)"/g)) assert.ok(nav.includes(glyph));
+});
+
+test('every registered channel has a bundled icon used in both its list row and detail heading', async () => {
+  const catalog = JSON.parse(await readFile(new URL('../transport/channels.json', import.meta.url), 'utf8'));
+  const glyphs = source.match(/\/\/ BEGIN CHANNEL GLYPHS\n([\s\S]*?)\/\/ END CHANNEL GLYPHS/);
+  assert.ok(glyphs);
+  const definitions = vm.runInNewContext(`${glyphs[1]}\nCHANNEL_GLYPHS;`);
+  assert.deepEqual(Object.keys(definitions).sort(), catalog.channels.map(({ id }) => id).sort());
+  for (const { paths } of Object.values(definitions)) {
+    assert.ok(paths.length > 0);
+    for (const path of paths) {
+      assert.match(path.d, /^[mM][mdzlhvcsqtae0-9\s.,+\-]+$/i);
+      assert.ok(Object.keys(path).every(key => ['d', 'fill', 'stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin'].includes(key)));
+    }
+  }
+  assert.match(source, /className: 'wxb-channel-label'[^\n]*h\(ChannelIcon, \{ id: channel\.id \}\)/);
+  assert.match(source, /h\(ChannelIcon, \{ id, size: 24 \}\).*title/);
 });
 
 test('QR safety accepts only local raster data, and expiry is an exact boundary', () => {

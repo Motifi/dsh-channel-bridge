@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { createCipheriv, createDecipheriv, createHash } from 'node:crypto';
 import { getEventListeners } from 'node:events';
 import { inspect } from 'node:util';
 import test from 'node:test';
 import {
-  ILinkClient, ILinkError, validateBaseUrl, splitText, extractTextMessage,
+  ILinkClient, ILinkError, validateBaseUrl, splitText, extractTextMessage, extractMediaMessage,
 } from '../lib/ilink.js';
 
 const ORIGIN = 'https://ilinkai.weixin.qq.com';
@@ -19,7 +20,7 @@ function fakeClient(responses = [{ ret: 0 }], options = {}) {
   const calls = [];
   const fetchImpl = async (url, init) => {
     const call = { url: new URL(url), init, headers: new Headers(init.headers) };
-    if (init.body !== undefined) call.body = JSON.parse(init.body);
+    if (init.body !== undefined) call.body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
     calls.push(call);
     const next = responses.shift();
     assert.notEqual(next, undefined, 'unexpected additional request');
@@ -147,6 +148,65 @@ test('getConfig and sendText emit exact user/context/text/client ID payloads', a
   });
   assert.match(calls[3].body.msg.client_id, /^dsh-[0-9a-f-]{36}$/);
   assert.equal(calls[3].body.msg.context_token, '');
+});
+
+test('sendTyping reports start and stop for a personal chat', async () => {
+  const { client, calls } = fakeClient([{ ret: 0 }, { ret: 0 }]);
+  for (const status of [1, 2]) await client.sendTyping({ userId: 'u', typingTicket: 'ticket', status });
+  assert.deepEqual(calls.map(call => call.body), [1, 2].map(status => ({
+    ilink_user_id: 'u', typing_ticket: 'ticket', status, base_info: BASE_INFO,
+  })));
+  assert.ok(calls.every(call => call.url.pathname === '/ilink/bot/sendtyping'));
+  await assert.rejects(client.sendTyping({ userId: 'u', typingTicket: 'ticket', status: 3 }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('sendMedia encrypts each attachment and sends the corresponding iLink item', async () => {
+  const payload = Buffer.from('attachment bytes');
+  const data = payload.toString('base64');
+  for (const [name, mediaType, itemType, itemKey] of [
+    ['photo.jpg', 1, 2, 'image_item'], ['note.silk', 4, 3, 'voice_item'],
+    ['archive.zip', 3, 4, 'file_item'], ['clip.mp4', 2, 5, 'video_item'],
+  ]) {
+    const { client, calls } = fakeClient([
+      { upload_param: 'upload/+' },
+      new Response(null, { headers: { 'x-encrypted-param': 'download-param' } }),
+      { ret: 0 },
+    ]);
+    await client.sendMedia({ userId: 'u', contextToken: CONTEXT, clientId: 'stable', file: { name, data } });
+    const [request, upload, send] = calls;
+    assert.equal(request.url.pathname, '/ilink/bot/getuploadurl');
+    assert.equal(request.body.media_type, mediaType);
+    assert.equal(request.body.to_user_id, 'u');
+    assert.equal(request.body.rawsize, payload.length);
+    assert.equal(request.body.rawfilemd5, createHash('md5').update(payload).digest('hex'));
+    assert.equal(request.body.filesize, upload.body.length);
+    assert.equal(upload.url.origin, 'https://novac2c.cdn.weixin.qq.com');
+    assert.equal(upload.url.pathname, '/c2c/upload');
+    assert.equal(upload.url.searchParams.get('encrypted_query_param'), 'upload/+');
+    assert.equal(upload.url.searchParams.get('filekey'), request.body.filekey);
+    assert.equal(upload.init.redirect, 'manual');
+    assert.equal(upload.headers.has('authorization'), false);
+    const decipher = createDecipheriv('aes-128-ecb', Buffer.from(request.body.aeskey, 'hex'), null);
+    assert.deepEqual(Buffer.concat([decipher.update(upload.body), decipher.final()]), payload);
+    assert.equal(send.body.msg.client_id, 'stable');
+    assert.equal(send.body.msg.context_token, CONTEXT);
+    const [item] = send.body.msg.item_list;
+    assert.equal(item.type, itemType);
+    assert.deepEqual(item[itemKey].media, {
+      encrypt_query_param: 'download-param',
+      aes_key: Buffer.from(request.body.aeskey).toString('base64'),
+      encrypt_type: 1,
+    });
+    if (itemType === 4) assert.equal(item.file_item.file_name, name);
+  }
+});
+
+test('sendMedia rejects a foreign upload URL before transmitting media', async () => {
+  const { client, calls } = fakeClient([{ upload_full_url: 'https://other.example/upload' }]);
+  await assert.rejects(client.sendMedia({
+    userId: 'u', contextToken: CONTEXT, file: { name: 'file.txt', data: 'eA==' },
+  }), { code: 'INVALID_UPLOAD_URL' });
+  assert.equal(calls.length, 1);
 });
 
 test('setAccount changes only in-memory credentials and validates atomically', async () => {
@@ -657,6 +717,13 @@ test('extractTextMessage includes only type-1 text, with text-only references', 
   assert.equal(result.text.includes('never include media'), false);
 });
 
+test('extractTextMessage retains a quote title when WeChat omits the quoted message', () => {
+  const result = extractTextMessage(inbound({ item_list: [
+    { type: 1, text_item: { text: 'reply' }, ref_msg: { title: 'Original summary' } },
+  ] }));
+  assert.equal(result.text, '[引用: Original summary]\nreply');
+});
+
 test('extractTextMessage uses stable SHA-256 fallback IDs independent of key order and rotating contexts', () => {
   const raw = inbound({ message_id: undefined, create_time_ms: undefined });
   const first = extractTextMessage(raw);
@@ -694,4 +761,66 @@ test('extractTextMessage ignores inherited and accessor fields, including nested
 test('extractTextMessage does not impose the embedding plugin input-length policy', () => {
   const text = 'a😀'.repeat(10_000);
   assert.equal(extractTextMessage(inbound({ item_list: [{ type: 1, text_item: { text } }] })).text, text);
+});
+
+const CDN = 'https://novac2c.cdn.weixin.qq.com/c2c/download';
+const MEDIA_KEY = Buffer.alloc(16, 8);
+
+function imageItem(overrides = {}) {
+  return { type: 2, image_item: { aeskey: MEDIA_KEY.toString('hex'), media: {
+    encrypt_query_param: 'media-locator+unsafe%=', ...overrides,
+  } } };
+}
+
+function encryptedMedia(bytes) {
+  const cipher = createCipheriv('aes-128-ecb', MEDIA_KEY, null);
+  return Buffer.concat([cipher.update(bytes), cipher.final()]);
+}
+
+test('iLink recognizes quoted media while preserving the text identity and refusing group and bot envelopes', () => {
+  const raw = inbound({ message_id: undefined, item_list: [{
+    type: 1, text_item: { text: 'photo quote' }, ref_msg: { message_item: imageItem() },
+  }] });
+  const { media, ...envelope } = extractMediaMessage(raw);
+  assert.deepEqual(envelope, extractTextMessage(raw));
+  assert.equal(media.length, 1);
+  assert.equal(extractMediaMessage({ ...raw, from_user_id: 'group@chatroom' }), null);
+  assert.equal(extractMediaMessage({ ...raw, message_type: '2' }), null);
+  const voice = extractMediaMessage(inbound({ item_list: [{ type: 3, voice_item: { text: '转写文字' } }] }));
+  assert.equal(voice.text, '[voice] 转写文字');
+  assert.deepEqual(voice.media, []);
+});
+
+test('iLink downloads only from the pinned CDN without credentials and decrypts supported AES keys', async () => {
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const { client, calls } = fakeClient([new Response(encryptedMedia(png)), new Response(encryptedMedia(Buffer.from('notes')))], { token: TOKEN });
+  const media = extractMediaMessage(inbound({ item_list: [
+    imageItem({ full_url: 'https://localhost/private' }),
+    { type: 4, file_item: { file_name: '../notes.txt', media: {
+      full_url: CDN + '?opaque=attachment', aes_key: Buffer.from(MEDIA_KEY.toString('hex')).toString('base64'),
+    } } },
+  ] })).media;
+  assert.deepEqual(await client.downloadMedia(media), [
+    { name: 'image.png', kind: 'image', mediaType: 'image/png', data: png.toString('base64') },
+    { name: 'notes.txt', kind: 'file', mediaType: 'text/plain', data: Buffer.from('notes').toString('base64') },
+  ]);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(({ url, init, headers }) => url.origin === new URL(CDN).origin && init.redirect === 'manual' && !headers.has('authorization')));
+  assert.equal(calls[0].url.searchParams.get('encrypted_query_param'), 'media-locator+unsafe%=');
+});
+
+test('iLink media refuses redirects, large streams, and ciphertext with invalid AES padding', async () => {
+  const { client, calls } = fakeClient([
+    new Response('', { status: 302, headers: { location: 'http://localhost/private' } }),
+    new Response(Buffer.alloc(LIMIT + 17)),
+    new Response(Buffer.alloc(15)),
+  ]);
+  const message = extractMediaMessage(inbound({ item_list: [
+    imageItem({ full_url: CDN + '?redirect=1', encrypt_query_param: '' }),
+    imageItem(), imageItem({ encrypt_query_param: 'bad-padding' }),
+  ] }));
+  const media = await client.downloadMedia(message.media);
+  assert.equal(calls.length, 3);
+  assert.equal(media.length, 3);
+  assert.ok(media.every(attachment => !attachment.data));
 });

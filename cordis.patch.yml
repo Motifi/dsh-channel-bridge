@@ -1,20 +1,72 @@
 - insert:
-    - id: preset-weixin-bridge-chat
+    - id: preset-dsh-channel-bridge-weixin-chat
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: weixin-bridge-chat
         name: 微信安全聊天 / WeChat safe chat
-        description: Isolated text-only WeChat conversations. All tools are disabled.
+        description: Isolated WeChat conversations with owner-controlled tools.
         order: 80
         plugins:
           - id: weixin-chat-native-executor
             name: '@deepseek-ai/dsh-tool-executor-native'
           - id: weixin-chat-policy
             name: '@local/dsh-channel-bridge/session-policy'
+          - name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              applyPatch: false
+          - name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - name: '@deepseek-ai/dsh-tool-schedule'
+          - name: '@deepseek-ai/dsh-tool-skill'
+          - name: '@deepseek-ai/dsh-tool-web'
+          - name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: spawn
+              maxDepth: 1
+          - name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - name: '@deepseek-ai/dsh-compaction-basic'
+              - name: '@deepseek-ai/dsh-command-compact'
+    - id: preset-dsh-channel-bridge-chat
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-channel-bridge-chat
+        name: 渠道安全聊天 / Message channel safe chat
+        description: Isolated messaging conversations with owner-controlled tools.
+        order: 81
+        plugins:
+          - id: channel-chat-native-executor
+            name: '@deepseek-ai/dsh-tool-executor-native'
+          - id: channel-chat-policy
+            name: '@local/dsh-channel-bridge/session-policy'
+          - name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              applyPatch: false
+          - name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - name: '@deepseek-ai/dsh-tool-schedule'
+          - name: '@deepseek-ai/dsh-tool-skill'
+          - name: '@deepseek-ai/dsh-tool-web'
+          - name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: spawn
+              maxDepth: 1
+          - name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - name: '@deepseek-ai/dsh-compaction-basic'
+              - name: '@deepseek-ai/dsh-command-compact'
     - id: weixin-bridge
       name: '@local/dsh-channel-bridge'
       config:
-        # Omitted workspaceDir creates weixin-workspace in the DSH default directory.
+        # Omitted workspaceDir reuses the approved WeChat session's working directory when available.
         pollTimeoutMs: 35000
         contextBudget: 8
         responseTimeoutMs: 180000

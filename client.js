@@ -4,20 +4,21 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'weixinBridge';
+    const PANEL_ID = 'dsh-channel-bridge';
 
     // BEGIN LOCALE DATA
     const MESSAGES = {
       "en": {
         "title": "WeChat bridge",
         "intro": "Connect your personal WeChat to a private, persistent DSH conversation.",
-        "limits.title": "First-release boundaries",
-        "limits.chat": "WeChat conversations are chat-only with all tools, including local tools, disabled. DSH must remain running; sleep or exit interrupts the connection.",
-        "limits.media": "Private text messages only. Images, voice, files, group chats, and unsolicited broadcasts are not supported.",
+        "limits.title": "WeChat support",
+        "limits.chat": "Keep DSH running to receive WeChat messages. Sleep or exit interrupts the connection.",
+        "limits.media": "Private chats support text and attachments. Inbound and outbound attachments have a 1 MiB total limit per message. Group chats and broadcasts are unavailable.",
         "limits.owner": "Only the DSH owner can scan, resume, or manually approve access. WeChat messages and agent tools cannot grant permission.",
         "steps.title": "Connect in four steps",
         "steps.scan": "Scan the QR code and confirm sign-in in WeChat.",
         "steps.pair": "Send any text in WeChat to receive an 8-digit pairing code.",
-        "steps.approve": "Enter that code below and approve only yourself.",
+        "steps.approve": "Enter the pairing code below to approve the sender.",
         "steps.chat": "Send another text in WeChat to start the conversation.",
         "status.title": "Connection",
         "status.label": "Connection status: {status}",
@@ -39,7 +40,7 @@ window.__ModuleLoader__.load({
         "actions.pause": "Pause receiving",
         "actions.resume": "Resume connection",
         "actions.disconnect": "Disconnect…",
-        "actions.approve": "Approve only myself",
+        "actions.approve": "Approve sender",
         "actions.revoke": "Revoke access…",
         "actions.copy": "Copy session ID",
         "actions.copied": "Session ID copied",
@@ -76,8 +77,8 @@ window.__ModuleLoader__.load({
         "login.verificationLabel": "WeChat verification code",
         "login.verificationHint": "Enter the code from WeChat, not the 8-digit pairing code used below.",
         "login.verificationFailed": "That verification code was not accepted. Check WeChat and try again.",
-        "users.title": "2–3. Pair and approve only yourself",
-        "users.hint": "Send a text in WeChat first. Approving requires the 8-digit code sent back to that same user. Only one user can be approved at a time.",
+        "users.title": "2–3. Pair and approve senders",
+        "users.hint": "Send a text in WeChat first. Each sender must provide the 8-digit pairing code sent to their account.",
         "users.emptyDisconnected": "Sign in first. Your request will appear here after you send a text in WeChat.",
         "users.emptyConnected": "No pairing requests yet. Send any text in WeChat to receive a pairing code.",
         "users.pending": "Awaiting approval",
@@ -86,7 +87,7 @@ window.__ModuleLoader__.load({
         "users.firstSeen": "First message",
         "users.lastSeen": "Last message",
         "users.pairingLabel": "8-digit code received in WeChat",
-        "users.pairingHint": "Check that this is your own request. Never approve someone else's code.",
+        "users.pairingHint": "Confirm the sender's identity before entering their pairing code.",
         "users.pairingSent": "A pairing code was sent in WeChat.",
         "users.pairingExpires": "Pairing code expires at {time}.",
         "users.pairingExpired": "The pairing code has expired. Send a new text in WeChat to receive a fresh code.",
@@ -146,19 +147,70 @@ window.__ModuleLoader__.load({
         "notice.resumed": "Connection resumed. Check the connection status above.",
         "notice.disconnected": "Disconnected. Saved credentials and approvals were cleared; DSH history was kept.",
         "notice.approved": "Approved. Send another text in WeChat to start your conversation.",
-        "notice.revoked": "Access revoked. DSH conversation history was kept."
+        "notice.revoked": "Access revoked. DSH conversation history was kept.",
+        "channels.title": "Message channels",
+        "channels.weixin": "WeChat",
+        "channels.back": "Back to message channels",
+        "channels.configured": "Configured",
+        "channels.unconfigured": "Not configured",
+        "channels.pendingVerification": "Pending account verification",
+        "channels.configuration": "Configuration",
+        "channels.configHint": "Saving replaces the channel configuration and pauses receiving. Enter the required values again when changing it. Stored credentials stay hidden.",
+        "channels.configJson": "Configuration JSON",
+        "channels.useJson": "Use JSON",
+        "channels.useFields": "Use configuration fields",
+        "channels.configInvalid": "Enter valid values for the configuration fields or paste a JSON object.",
+        "channels.configSaved": "Configuration saved.",
+        "channels.configJsonRequired": "Enter a JSON object.",
+        "channels.saveConfig": "Save configuration",
+        "channels.yes": "Yes",
+        "channels.no": "No",
+        "channels.useDefault": "Use default",
+        "channels.access": "Access",
+        "channels.allowedSenders": "Allowed sender IDs",
+        "channels.allowedHint": "Enter one platform sender ID per line. An empty list blocks all senders.",
+        "channels.wildcard": "Enter individual sender IDs. The wildcard * is unavailable.",
+        "channels.accessSaved": "Access saved.",
+        "channels.saveAccess": "Save access",
+        "channels.accessNeedsChange": "Enter a change to the allowed sender IDs.",
+        "channels.connect": "Connect",
+        "channels.login": "Sign in",
+        "channels.qrAlt": "Channel QR code. Scan it with the messaging app.",
+        "channels.openAuthorization": "Authorize with Linear",
+        "channels.platformDocs": "Platform documentation",
+        "channels.disconnectHint": "Disconnect and remove the credentials and allowed senders for this channel? DSH conversation history is kept.",
+        "channels.runtimeError": "The channel reported an error.",
+        "channels.uncertain": "Delivery could not be confirmed for {count} replies. Check the DSH conversation before resending.",
+        "channels.configBeforeAccess": "Save the channel configuration first.",
+        "channels.accessBeforeConnect": "Add an allowed sender before connecting.",
+        "features.title": "Agent tools and replies",
+        "features.tools": "Allowed DSH tools",
+        "features.toolsHint": "Tools start disabled. Each selected tool still requires approval through DSH before it runs.",
+        "features.noTools": "No eligible tools are registered in DSH.",
+        "features.replies": "Reply options",
+        "features.repliesHint": "Options take effect on platforms that support the corresponding delivery mode.",
+        "features.streaming": "Stream reply text",
+        "features.sendProgress": "Send progress",
+        "features.sendToolHints": "Send tool activity",
+        "features.showReasoning": "Share reasoning",
+        "features.save": "Save tools and replies",
+        "features.unchanged": "Make a change to save.",
+        "features.saved": "Tools and reply options saved.",
+        "features.openSession": "Open DSH conversation",
+        "features.sessions": "Channel conversations",
+        "features.sessionHint": "Open a conversation to review its replies or approve a pending tool call."
       },
       "zh": {
         "title": "微信连接",
         "intro": "将个人微信连接到独立、持久的 DSH 私人会话。",
-        "limits.title": "首版功能边界",
-        "limits.chat": "微信会话仅聊天，禁用所有工具（包括本地工具）；DSH 必须持续运行，休眠或退出会中断连接。",
-        "limits.media": "仅支持个人私聊的文本收发，不支持图片、语音、文件、群聊或主动群发。",
+        "limits.title": "微信支持范围",
+        "limits.chat": "DSH 必须持续运行才能接收微信消息。休眠或退出会中断连接。",
+        "limits.media": "个人私聊可收发文本和附件。每条消息的入站或出站附件合计最多 1 MiB。群聊和群发暂不可用。",
         "limits.owner": "只有 DSH 所有者可以扫码、恢复连接或手动批准；微信消息和 Agent 工具均不能授予权限。",
         "steps.title": "四步开始使用",
         "steps.scan": "用微信扫码，并在微信中确认登录。",
         "steps.pair": "在微信发送任意文本，接收 8 位配对码。",
-        "steps.approve": "在下方输入配对码，仅批准本人。",
+        "steps.approve": "在下方输入配对码，批准该发送者。",
         "steps.chat": "在微信再发一条文本，开启会话。",
         "status.title": "连接状态",
         "status.label": "连接状态：{status}",
@@ -180,7 +232,7 @@ window.__ModuleLoader__.load({
         "actions.pause": "暂停接收",
         "actions.resume": "恢复连接",
         "actions.disconnect": "断开连接…",
-        "actions.approve": "仅批准本人",
+        "actions.approve": "批准发送者",
         "actions.revoke": "撤销授权…",
         "actions.copy": "复制会话 ID",
         "actions.copied": "会话 ID 已复制",
@@ -217,8 +269,8 @@ window.__ModuleLoader__.load({
         "login.verificationLabel": "微信登录验证码",
         "login.verificationHint": "请输入微信要求的登录验证码，不是下方的 8 位配对码。",
         "login.verificationFailed": "验证码未通过，请核对微信提示后重试。",
-        "users.title": "2–3. 配对并仅批准本人",
-        "users.hint": "请先在微信发送文本。批准时必须输入发送给该用户的 8 位配对码；同一时间只能批准一人。",
+        "users.title": "2–3. 配对并批准发送者",
+        "users.hint": "请让发送者先在微信发送文本。每位发送者都须提供发给其账号的 8 位配对码。",
         "users.emptyDisconnected": "请先扫码登录；在微信发送文本后，配对请求会显示在这里。",
         "users.emptyConnected": "尚无配对请求。请在微信发送任意文本，接收配对码。",
         "users.pending": "等待批准",
@@ -227,7 +279,7 @@ window.__ModuleLoader__.load({
         "users.firstSeen": "首次消息",
         "users.lastSeen": "最近消息",
         "users.pairingLabel": "微信收到的 8 位配对码",
-        "users.pairingHint": "请确认这是您本人的请求，切勿批准他人的配对码。",
+        "users.pairingHint": "输入配对码前，请确认该发送者的身份。",
         "users.pairingSent": "已通过微信发送配对码。",
         "users.pairingExpires": "配对码有效期至 {time}。",
         "users.pairingExpired": "配对码已过期，请在微信发送新文本以获取新配对码。",
@@ -287,7 +339,58 @@ window.__ModuleLoader__.load({
         "notice.resumed": "已请求恢复连接，请查看上方连接状态。",
         "notice.disconnected": "已断开连接并清除保存的凭据和批准记录；DSH 历史已保留。",
         "notice.approved": "已批准。请在微信再发一条文本，开启您的会话。",
-        "notice.revoked": "已撤销授权，DSH 会话历史已保留。"
+        "notice.revoked": "已撤销授权，DSH 会话历史已保留。",
+        "channels.title": "消息渠道",
+        "channels.weixin": "微信",
+        "channels.back": "返回消息渠道",
+        "channels.configured": "已配置",
+        "channels.unconfigured": "未配置",
+        "channels.pendingVerification": "待账号验证",
+        "channels.configuration": "渠道配置",
+        "channels.configHint": "保存会替换渠道配置并暂停接收。修改时请重新填写必需字段。已保存的凭据不会显示。",
+        "channels.configJson": "渠道配置 JSON",
+        "channels.useJson": "使用 JSON",
+        "channels.useFields": "使用配置字段",
+        "channels.configInvalid": "请输入有效的配置字段，或粘贴有效的 JSON 对象。",
+        "channels.configSaved": "已保存配置。",
+        "channels.configJsonRequired": "请输入 JSON 对象。",
+        "channels.saveConfig": "保存配置",
+        "channels.yes": "是",
+        "channels.no": "否",
+        "channels.useDefault": "使用默认值",
+        "channels.access": "访问权限",
+        "channels.allowedSenders": "允许的发送者 ID",
+        "channels.allowedHint": "每行填写一个平台发送者 ID。留空会拒绝所有发送者。",
+        "channels.wildcard": "请逐一填写发送者 ID。不能使用通配符 *。",
+        "channels.accessSaved": "已保存访问权限。",
+        "channels.saveAccess": "保存访问权限",
+        "channels.accessNeedsChange": "请修改允许的发送者 ID 后保存。",
+        "channels.connect": "连接",
+        "channels.login": "登录",
+        "channels.qrAlt": "渠道登录二维码，请使用对应的聊天应用扫码。",
+        "channels.openAuthorization": "前往 Linear 授权",
+        "channels.platformDocs": "平台文档",
+        "channels.disconnectHint": "断开这个渠道并清除其凭据和允许的发送者？DSH 会话历史会保留。",
+        "channels.runtimeError": "渠道报告异常。",
+        "channels.uncertain": "有 {count} 条回复的送达情况无法确认。重新发送前，请先查看 DSH 会话。",
+        "channels.configBeforeAccess": "请先保存渠道配置。",
+        "channels.accessBeforeConnect": "请先添加允许的发送者。",
+        "features.title": "Agent 工具与回复",
+        "features.tools": "允许的 DSH 工具",
+        "features.toolsHint": "工具默认关闭。勾选的工具仍须在 DSH 中获得本次批准后才能执行。",
+        "features.noTools": "DSH 尚未注册可用的工具。",
+        "features.replies": "回复选项",
+        "features.repliesHint": "选项是否生效取决于平台支持的发送方式。",
+        "features.streaming": "流式回复",
+        "features.sendProgress": "发送处理进度",
+        "features.sendToolHints": "发送工具调用提示",
+        "features.showReasoning": "发送推理内容",
+        "features.save": "保存工具和回复选项",
+        "features.unchanged": "修改选项后即可保存。",
+        "features.saved": "已保存工具和回复选项。",
+        "features.openSession": "打开 DSH 会话",
+        "features.sessions": "渠道会话",
+        "features.sessionHint": "打开对应会话可查看回复，或处理等待批准的工具调用。"
       }
     };
     // END LOCALE DATA
@@ -295,7 +398,7 @@ window.__ModuleLoader__.load({
     // BEGIN CLIENT CORE — pure transport/state helpers, tested without React or a DOM.
     const CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'paused', 'auth-required', 'error']);
     const ACTIVE_LOGIN_STATES = new Set(['waiting', 'scanned', 'verify-code']);
-    const MUTATIONS = new Set(['login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
+    const MUTATIONS = new Set(['configure', 'preferences.update', 'login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
     const NOTICE_KEYS = {
       'login.start': 'notice.loginStarted', 'login.verify': 'notice.loginVerified',
       'login.cancel': 'notice.loginCancelled', 'connection.pause': 'notice.paused',
@@ -408,13 +511,13 @@ window.__ModuleLoader__.load({
       return 'errors.failed';
     }
 
-    function createApi(fetchImpl) {
+    function createOwnerApi(fetchImpl, path, header, validate) {
       return async function request(action, payload, signal) {
         let response;
         try {
-          response = await fetchImpl('/plugins/weixin-bridge/api', {
+          response = await fetchImpl(path, {
             method: 'POST', credentials: 'same-origin', cache: 'no-store',
-            headers: { 'Content-Type': 'application/json', 'X-DSH-Weixin-Bridge': '1' },
+            headers: { 'Content-Type': 'application/json', [header]: '1' },
             body: JSON.stringify({ ...payload, action }), signal,
           });
         } catch (error) {
@@ -429,9 +532,77 @@ window.__ModuleLoader__.load({
           throw bridgeError('host', response.status,
             body && body.error && typeof body.error.code === 'string' ? body.error.code : '');
         }
-        if (!validSnapshot(body.value)) throw bridgeError('response', response.status);
+        if (!validate(body.value)) throw bridgeError('response', response.status);
         return body.value;
       };
+    }
+
+    function createApi(fetchImpl) {
+      return createOwnerApi(fetchImpl, '/plugins/weixin-bridge/api', 'X-DSH-Weixin-Bridge', validSnapshot);
+    }
+
+    function validChannelSnapshot(value) {
+      return Boolean(value && Array.isArray(value.channels)
+        && (value.toolChoices === undefined || (Array.isArray(value.toolChoices)
+          && value.toolChoices.every(name => typeof name === 'string')))
+        && value.channels.every(channel => channel && typeof channel.id === 'string'
+          && /^[a-z][a-z0-9_-]{0,63}$/.test(channel.id) && typeof channel.name === 'string'
+          && CONNECTION_STATES.has(channel.status) && typeof channel.configured === 'boolean'
+          && typeof channel.enabled === 'boolean' && Array.isArray(channel.allowedSenders)
+          && (channel.preferences?.allowedTools === undefined || (Array.isArray(channel.preferences.allowedTools)
+            && channel.preferences.allowedTools.every(name => typeof name === 'string')))
+          && channel.allowedSenders.every(sender => typeof sender === 'string'))
+        && new Set(value.channels.map(channel => channel.id)).size === value.channels.length);
+    }
+
+    function createChannelApi(fetchImpl) {
+      return createOwnerApi(fetchImpl, '/plugins/channel-bridge/api', 'X-DSH-Channel-Bridge', validChannelSnapshot);
+    }
+
+    function writeChannelField(config, name, value) {
+      const segments = name.split('.');
+      if (segments.some(part => !/^[A-Za-z][A-Za-z0-9_-]*$/.test(part)
+        || part === 'constructor' || part === 'prototype')) throw new TypeError('field');
+      const key = segments.pop();
+      let parent = config;
+      for (const part of segments) {
+        if (!Object.hasOwn(parent, part)) parent[part] = {};
+        if (!parent[part] || typeof parent[part] !== 'object' || Array.isArray(parent[part])) {
+          throw new TypeError('field');
+        }
+        parent = parent[part];
+      }
+      if (Object.hasOwn(parent, key)) throw new TypeError('field');
+      parent[key] = value;
+    }
+
+    function parseChannelConfig(fields, values) {
+      const config = {};
+      for (const { field, kind, required, choices } of fields) {
+        const input = String(Object.hasOwn(values, field) ? values[field] : '').trim();
+        if (!input) {
+          if (required) throw new TypeError('required');
+          continue;
+        }
+        let value = input;
+        if (kind === 'bool') {
+          if (input !== 'true' && input !== 'false') throw new TypeError('boolean');
+          value = input === 'true';
+        } else if (kind === 'int' || kind === 'float') {
+          value = Number(input);
+          if (!Number.isFinite(value) || (kind === 'int' && !Number.isSafeInteger(value))) {
+            throw new TypeError('number');
+          }
+        } else if (kind === 'list') {
+          value = input.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+        } else if (kind === 'json') {
+          value = JSON.parse(input);
+        } else if (kind === 'enum' && !choices?.includes(input)) {
+          throw new TypeError('choice');
+        }
+        writeChannelField(config, field, value);
+      }
+      return config;
     }
 
     function createController(api, options) {
@@ -512,6 +683,7 @@ window.__ModuleLoader__.load({
           const key = request.timedOut ? 'errors.timeout' : !state.online ? 'errors.offline'
             : request.offlineAbort ? 'errors.network' : errorKey(error);
           const failure = { key, action, userId: payload.userId || null };
+          if (payload.id) failure.channelId = payload.id;
           if (action === 'status') failures += 1;
           patch({
             initialLoading: false,
@@ -565,6 +737,82 @@ window.__ModuleLoader__.load({
 
     // Controls follow the installed Settings Language row and Plugin Manager type/spacing patterns.
     // No literal interface colors or private Harness Client imports.
+    // Brand paths from Simple Icons 16.37.0 (CC0-1.0): Discord, Linear, Matrix, Mattermost,
+    // QQ, Signal, Telegram, WeChat and WhatsApp. Brand marks belong to their respective owners.
+    // The other glyphs are drawn for this integration; all assets are kept offline.
+    // BEGIN CHANNEL GLYPHS
+    const CHANNEL_GLYPHS = {
+      "dingtalk": { "color": "#1677FF", "paths": [
+        {"d": "M4 4.1 21 9a.8.8 0 0 1 .35 1.28l-8.1 8.2a.57.57 0 0 1-.97-.52l1.16-5.06-3.03-.87a4.65 4.65 0 0 1-2.44-1.84l-.4-.6 5.2 1.47.19-.77-6.2-1.79a4.57 4.57 0 0 1-2.66-2.2l-.24-.49 5.8 1.64-.31-.93L5.97 5.7A3.3 3.3 0 0 1 4 4.1Z"},
+      ] },
+      "discord": { "color": "#5865F2", "paths": [
+        {"d": "M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"},
+      ] },
+      "email": { "color": "#5178A7", "paths": [
+        {"d": "M5.5 5.7h13a2 2 0 0 1 2 2v8.6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.7a2 2 0 0 1 2-2Zm-1.8 2 7.1 5.05a2 2 0 0 0 2.4 0l7.1-5.05", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "feishu": { "color": "#2261F2", "paths": [
+        {"d": "M3 5.15 12.3 7.4 19.8 3c.7-.4 1.45.27 1.16.99l-3.41 8.43a7 7 0 0 1-6.5 4.39H8.65l3.52-4.96-4.32-.95A6.97 6.97 0 0 1 3 5.15Z", "fill": "#27A7DB"},
+        {"d": "m12.3 7.4 7.5-4.4c.7-.4 1.45.27 1.16.99l-3.41 8.43a7 7 0 0 1-6.5 4.39H7.9c-1.8 0-3.5.69-4.8 1.93l4.29-6.42c1.02-1.5 2.1-2.35 3.8-3.75L12.3 7.4Z"},
+        {"d": "M7.4 12.32c1.02-1.5 2.1-2.35 3.8-3.75l1.1-1.17-3.41 2.01-2.25 3.73Z", "fill": "#38C6B5"},
+      ] },
+      "linear": { "color": "#5E6AD2", "paths": [
+        {"d": "M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"},
+      ] },
+      "matrix": { "color": "currentColor", "paths": [
+        {"d": "M.632.55v22.9H2.28V24H0V0h2.28v.55zm7.043 7.26v1.157h.033c.309-.443.683-.784 1.117-1.024.433-.245.936-.365 1.5-.365.54 0 1.033.107 1.481.314.448.208.785.582 1.02 1.108.254-.374.6-.706 1.034-.992.434-.287.95-.43 1.546-.43.453 0 .872.056 1.26.167.388.11.716.286.993.53.276.245.489.559.646.951.152.392.23.863.23 1.417v5.728h-2.349V11.52c0-.286-.01-.559-.032-.812a1.755 1.755 0 0 0-.18-.66 1.106 1.106 0 0 0-.438-.448c-.194-.11-.457-.166-.785-.166-.332 0-.6.064-.803.189a1.38 1.38 0 0 0-.48.499 1.946 1.946 0 0 0-.231.696 5.56 5.56 0 0 0-.06.785v4.768h-2.35v-4.8c0-.254-.004-.503-.018-.752a2.074 2.074 0 0 0-.143-.688 1.052 1.052 0 0 0-.415-.503c-.194-.125-.476-.19-.854-.19-.111 0-.259.024-.439.074-.18.051-.36.143-.53.282-.171.138-.319.337-.439.595-.12.259-.18.6-.18 1.02v4.966H5.46V7.81zm15.693 15.64V.55H21.72V0H24v24h-2.28v-.55z"},
+      ] },
+      "mattermost": { "color": "#0058CC", "paths": [
+        {"d": "M12.081 0C7.048-.034 2.339 3.125.637 8.153c-2.125 6.276 1.24 13.086 7.516 15.21 6.276 2.125 13.086-1.24 15.21-7.516 1.727-5.1-.172-10.552-4.311-13.557l.126 2.547c2.065 2.282 2.88 5.512 1.852 8.549-1.534 4.532-6.594 6.915-11.3 5.321-4.708-1.593-7.28-6.559-5.745-11.092 1.031-3.046 3.655-5.121 6.694-5.67l1.642-1.94A4.87 4.87 0 0 0 12.08 0zm3.528 1.094a.284.284 0 0 0-.123.024l-.004.001a.33.33 0 0 0-.109.071c-.145.142-.657.828-.657.828L13.6 3.4l-1.3 1.585-2.232 2.776s-1.024 1.278-.798 2.851c.226 1.574 1.396 2.34 2.304 2.648.907.307 2.302.408 3.438-.704 1.135-1.112 1.098-2.75 1.098-2.75l-.087-3.56-.07-2.05-.047-1.775s.01-.856-.02-1.057a.33.33 0 0 0-.035-.107l-.006-.012-.007-.011a.277.277 0 0 0-.229-.14z"},
+      ] },
+      "mochat": { "color": "#168867", "paths": [
+        {"d": "M3.8 17.2V6.8a1 1 0 0 1 1-1h14.4a1 1 0 0 1 1 1v10.4a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1Z M7.8 9.2l2.7 2.8-2.7 2.8m4.7 0h3.8", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "msteams": { "color": "#6458CD", "paths": [
+        {"d": "M18.6 3.65a2.65 2.65 0 1 1 0 5.3 2.65 2.65 0 0 1 0-5.3Zm-.9 6.85h3.9c.55 0 1 .45 1 1v2.95a4.15 4.15 0 0 1-4.15 4.15h-.75v-8.1Z", "fill": "#8C83E3"},
+        {"d": "M12.5 2.9a3.05 3.05 0 1 1 0 6.1 3.05 3.05 0 0 1 0-6.1Zm-4.7 7.6h9.4c.55 0 1 .45 1 1v4.02a5.7 5.7 0 0 1-11.4 0V11.5c0-.55.45-1 1-1Z", "fill": "#7569E5"},
+        {"d": "M2.3 7.75h9.1c.68 0 1.23.55 1.23 1.23v8.66c0 .68-.55 1.23-1.23 1.23H2.3c-.68 0-1.23-.55-1.23-1.23V8.98c0-.68.55-1.23 1.23-1.23Z"},
+        {"d": "M9.45 10.75v1.31H7.54v4.12H5.97v-4.12H4.05v-1.31h5.4Z", "fill": "#fff"},
+      ] },
+      "napcat": { "color": "#DE7426", "paths": [
+        {"d": "M3.6 12.7c0-1.54.53-2.96 1.4-4.08L4.7 4.1a.65.65 0 0 1 1.02-.57l3.28 2.26a9.9 9.9 0 0 1 6 0l3.28-2.26a.65.65 0 0 1 1.02.57L19 8.62c.87 1.12 1.4 2.54 1.4 4.08 0 4.3-3.76 7.1-8.4 7.1s-8.4-2.8-8.4-7.1Z M7.4 13.2a1.2 1.2 0 0 1 2.25 0m4.7 0a1.2 1.2 0 0 1 2.25 0m-5.7 3.04 1.1.85 1.1-.85", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "qq": { "color": "#1087C0", "paths": [
+        {"d": "M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"},
+      ] },
+      "signal": { "color": "#3B45FD", "paths": [
+        {"d": "M12 0q-.934 0-1.83.139l.17 1.111a11 11 0 0 1 3.32 0l.172-1.111A12 12 0 0 0 12 0M9.152.34A12 12 0 0 0 5.77 1.742l.584.961a10.8 10.8 0 0 1 3.066-1.27zm5.696 0-.268 1.094a10.8 10.8 0 0 1 3.066 1.27l.584-.962A12 12 0 0 0 14.848.34M12 2.25a9.75 9.75 0 0 0-8.539 14.459c.074.134.1.292.064.441l-1.013 4.338 4.338-1.013a.62.62 0 0 1 .441.064A9.7 9.7 0 0 0 12 21.75c5.385 0 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25m-7.092.068a12 12 0 0 0-2.59 2.59l.909.664a11 11 0 0 1 2.345-2.345zm14.184 0-.664.909a11 11 0 0 1 2.345 2.345l.909-.664a12 12 0 0 0-2.59-2.59M1.742 5.77A12 12 0 0 0 .34 9.152l1.094.268a10.8 10.8 0 0 1 1.269-3.066zm20.516 0-.961.584a10.8 10.8 0 0 1 1.27 3.066l1.093-.268a12 12 0 0 0-1.402-3.383M.138 10.168A12 12 0 0 0 0 12q0 .934.139 1.83l1.111-.17A11 11 0 0 1 1.125 12q0-.848.125-1.66zm23.723.002-1.111.17q.125.812.125 1.66c0 .848-.042 1.12-.125 1.66l1.111.172a12.1 12.1 0 0 0 0-3.662M1.434 14.58l-1.094.268a12 12 0 0 0 .96 2.591l-.265 1.14 1.096.255.36-1.539-.188-.365a10.8 10.8 0 0 1-.87-2.35m21.133 0a10.8 10.8 0 0 1-1.27 3.067l.962.584a12 12 0 0 0 1.402-3.383zm-1.793 3.848a11 11 0 0 1-2.345 2.345l.664.909a12 12 0 0 0 2.59-2.59zm-19.959 1.1L.357 21.48a1.8 1.8 0 0 0 2.162 2.161l1.954-.455-.256-1.095-1.953.455a.675.675 0 0 1-.81-.81l.454-1.954zm16.832 1.769a10.8 10.8 0 0 1-3.066 1.27l.268 1.093a12 12 0 0 0 3.382-1.402zm-10.94.213-1.54.36.256 1.095 1.139-.266c.814.415 1.683.74 2.591.961l.268-1.094a10.8 10.8 0 0 1-2.35-.869zm3.634 1.24-.172 1.111a12.1 12.1 0 0 0 3.662 0l-.17-1.111q-.812.125-1.66.125a11 11 0 0 1-1.66-.125"},
+      ] },
+      "slack": { "color": "#4A154B", "paths": [
+        {"d": "M8.9 2.4a2.02 2.02 0 0 1 2.02 2.02v4.43a2.02 2.02 0 0 1-4.04 0V4.42A2.02 2.02 0 0 1 8.9 2.4ZM4.25 6.87c1.12 0 2.02.9 2.02 2.02v2.02H4.25a2.02 2.02 0 1 1 0-4.04Z", "fill": "#36C5F0"},
+        {"d": "M13.12 4.42a2.02 2.02 0 0 1 2.02 2.02v.43h4.44a2.02 2.02 0 0 1 0 4.04h-4.44a2.02 2.02 0 0 1-2.02-2.02V4.42Zm2.02-.01V2.4a2.01 2.01 0 1 1-2.01 2.01h2.01Z", "fill": "#2EB67D"},
+        {"d": "M15.13 13.12a2.02 2.02 0 0 1 2.02 2.02v4.44a2.02 2.02 0 0 1-4.04 0v-4.44c0-1.12.9-2.02 2.02-2.02Zm4.67 0a2.02 2.02 0 1 1 0 4.04c-1.11 0-2.02-.9-2.02-2.02v-2.02h2.02Z", "fill": "#ECB22E"},
+        {"d": "M4.42 13.12h4.43a2.02 2.02 0 1 1 0 4.04H4.42a2.02 2.02 0 1 1 0-4.04ZM8.87 17.76h2.04v2.02a2.02 2.02 0 1 1-2.04-2.02Z", "fill": "#E01E5A"},
+      ] },
+      "telegram": { "color": "#26A5E4", "paths": [
+        {"d": "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"},
+      ] },
+      "websocket": { "color": "#6077DC", "paths": [
+        {"d": "m8.1 5.3-4 4a2.1 2.1 0 0 0 0 2.97l4 4m7.8 2.43 4-4a2.1 2.1 0 0 0 0-2.97l-4-4m-7.35 6.96 6.9-6.58 M9.3 5.1a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Zm2.7 13.8a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "wecom": { "color": "#247AE6", "paths": [
+        {"d": "M2.8 12.3a7.5 7.5 0 1 1 13.3 4.7l.3 2.65-2.9-1.12a7.9 7.9 0 0 1-3.2.65c-4.15 0-7.5-3.08-7.5-6.88Z", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M7.7 12.3h5.2m-2.6-2.6v5.2", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M19.9 4.9a1.35 1.35 0 1 1-2.7 0 1.35 1.35 0 0 1 2.7 0Zm2.25 4.33a1.35 1.35 0 1 1-2.7 0 1.35 1.35 0 0 1 2.7 0Z", "fill": "#32BF91"},
+      ] },
+      "weixin": { "color": "#07C160", "paths": [
+        {"d": "M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.27-.027-.407-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"},
+      ] },
+      "whatsapp": { "color": "#168A50", "paths": [
+        {"d": "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"},
+      ] },
+      "whatsapp_agent": { "color": "#168A50", "paths": [
+        {"d": "M5 5.5h14a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-7.8l-4.6 2.7V18H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z M12 3.2v2.3m-3.1 8.4h6.2", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M9.9 10.4a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0Zm6.5 0a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0Z"},
+      ] },
+    };
+    // END CHANNEL GLYPHS
+
     const CSS = `
 .wxb{box-sizing:border-box;min-width:0;max-width:800px;color:var(--dsw-alias-label-primary);font-size:14px;line-height:22px;padding:8px 0 28px}
 .wxb *{box-sizing:border-box}.wxb h2,.wxb h3,.wxb p,.wxb ol,.wxb dl{margin:0}.wxb h2{font-size:20px;line-height:28px;font-weight:500}.wxb h3{font-size:14px;line-height:22px;font-weight:500}
@@ -577,9 +825,24 @@ window.__ModuleLoader__.load({
 .wxb-status{display:inline-flex;align-items:center;gap:8px;min-width:0}.wxb-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--dsw-alias-state-idle-primary)}.wxb-dot[data-status=connected],.wxb-dot[data-status=approved]{background:var(--dsw-alias-state-success-primary)}.wxb-dot[data-status=connecting],.wxb-dot[data-status=paused],.wxb-dot[data-status=pending],.wxb-dot[data-status=auth-required]{background:var(--dsw-alias-state-warn-primary)}.wxb-dot[data-status=error]{background:var(--dsw-alias-state-error-primary)}
 .wxb-qrrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px}.wxb-qr{width:200px;height:200px;max-width:100%;object-fit:contain;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}.wxb-qrtext{flex:1;min-width:min(220px,100%);display:flex;flex-direction:column;gap:10px}.wxb-user{display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px 0;border-top:.5px solid var(--dsw-alias-border-l2)}.wxb-user:first-child{padding-top:0;border-top:0}.wxb-userid{font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:text}
 .wxb-details{display:grid;grid-template-columns:minmax(110px,160px) minmax(0,1fr);gap:8px 16px;font-size:13px;line-height:20px}.wxb-details dt{color:var(--dsw-alias-label-secondary)}.wxb-details dd{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text}.wxb-code{font:inherit;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.wxb-session{display:block;max-width:100%;padding:4px 0;border-radius:3px;font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:all}.wxb-confirm{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wxb-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}.wxb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-@media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}}
-@media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}}
-@media(pointer:coarse){.wxb-input{font-size:16px}.wxb-button{min-height:40px}}
+.wxb-page{height:100%;min-height:0;min-width:0;overflow:auto;padding:24px clamp(16px,5vw,56px);background:var(--dsw-alias-bg-base)}
+.wxb-page>.wxb{max-width:960px;margin-inline:auto}.wxb-page h1{font-size:26px;line-height:34px;font-weight:550;margin:0}
+.wxb-crumb{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 4px;margin-inline-start:-4px;border:0;border-radius:4px;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12.5px;cursor:pointer}
+.wxb-crumb svg{flex:none}.wxb-crumb:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.wxb-detail-head{margin-block:20px 2px}.wxb-page .wxb-detail-head h1{font-size:20px;line-height:28px;font-weight:500}
+.wxb-channel-label,.wxb-channel-heading{display:flex;align-items:center;gap:10px;min-width:0;overflow-wrap:anywhere}
+.wxb-channel-icon{display:block;flex:none}
+.wxb-list{list-style:none;padding:0;margin:18px 0 0;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;overflow:hidden}
+.wxb-list>li+li{border-top:1px solid var(--dsw-alias-border-l2)}
+.wxb-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,auto) auto;gap:12px;align-items:center;text-align:start;min-height:48px;width:100%;padding:8px 14px;border:0;background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit;cursor:pointer}
+.wxb-row:hover,.wxb-row:focus-visible{background:var(--dsw-alias-bg-layer-2)}.wxb-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.wxb-subhead{margin-block:16px 2px}.wxb-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px}
+.wxb-field .wxb-channel-input{width:100%}.wxb-field textarea.wxb-channel-input{height:auto;min-height:72px;resize:vertical}
+.wxb-choices{min-width:0;margin:0;padding:0;border:0}.wxb-choices legend{padding:0;font-weight:600}.wxb-choices p{margin:5px 0 9px}.wxb-tool-grid{display:flex;flex-wrap:wrap;gap:8px 16px}.wxb-tool-grid label{display:inline-flex;align-items:center;gap:5px}.wxb-tool-grid input{accent-color:var(--dsw-alias-label-primary)}
+.wxb-link{color:var(--dsw-alias-brand-primary)}
+@media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}.wxb-crumb:hover{color:var(--dsw-alias-label-primary)}}
+@media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}.wxb-row{grid-template-columns:minmax(0,1fr) auto}}
+@media(pointer:coarse){.wxb-input{font-size:16px}.wxb-button,.wxb-crumb{min-height:40px}}
 `;
 
     function ActionButton({ label, busyLabel, busy, reason, onClick, variant, buttonRef, type }) {
@@ -596,6 +859,34 @@ window.__ModuleLoader__.load({
 
     function StatusDot({ status }) {
       return h('span', { className: 'wxb-dot', 'data-status': status, 'aria-hidden': true });
+    }
+
+    function ChannelIcon({ id, size = 18 }) {
+      if (!Object.hasOwn(CHANNEL_GLYPHS, id)) return null;
+      const { color, paths } = CHANNEL_GLYPHS[id];
+      return h('svg', { className: 'wxb-channel-icon', width: size, height: size, viewBox: '0 0 24 24',
+        fill: 'currentColor', style: { color }, 'aria-hidden': true, focusable: false },
+      paths.map((path, index) => h('path', { ...path, key: index })));
+    }
+
+    function useBridgeController(apiFactory) {
+      const store = React.useMemo(() => createController(apiFactory((...args) => window.fetch(...args)), {
+        online: typeof navigator === 'undefined' || navigator.onLine !== false,
+      }), [apiFactory]);
+      const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+      React.useEffect(() => {
+        const online = () => { store.setOnline(true); };
+        const offline = () => { store.setOnline(false); };
+        window.addEventListener('online', online);
+        window.addEventListener('offline', offline);
+        void store.start();
+        return () => {
+          window.removeEventListener('online', online);
+          window.removeEventListener('offline', offline);
+          store.stop();
+        };
+      }, [store]);
+      return [store, state];
     }
 
     function ConfirmControl({ t, action, busyKey, state, reason, titleKey, bodyKey, buttonKey, confirmKey, payload, store, onConfirmed }) {
@@ -640,14 +931,16 @@ window.__ModuleLoader__.load({
           } })));
     }
 
-    function SessionCopy({ t, sessionId }) {
+    function SessionCopy({ t, sessionId, openSession }) {
       const [copy, setCopy] = React.useState('idle');
       const mounted = React.useRef(true);
       React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
       return h('div', { className: 'wxb-stack' },
         h('span', { className: 'wxb-muted' }, t('users.sessionLabel')),
         h('code', { className: 'wxb-session', tabIndex: 0, 'aria-label': t('users.sessionLabel') }, sessionId),
-        h('div', { className: 'wxb-actions' }, h(ActionButton, {
+        h('div', { className: 'wxb-actions' }, openSession ? h(ActionButton, {
+          label: t('features.openSession'), onClick: () => openSession(sessionId),
+        }) : null, h(ActionButton, {
           label: t('actions.copy'), busy: copy === 'busy', busyLabel: t('busy.copy'),
           reason: copy === 'busy' ? t('busy.copy') : null,
           onClick: async () => {
@@ -666,19 +959,24 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale'],
+      inject: ['slots', 'locale', 'uiWorkspace'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, MESSAGES), 'weixinBridge: dictionaries');
         const t = ctx.locale.bind(NS);
         const subscribeLocale = listener => ctx.locale.subscribe(listener);
         const localeSnapshot = () => ctx.locale.getSnapshot();
+        const openSession = sessionId => {
+          if (/^(?:wxbridge|dshbridge)-[a-f0-9]{32}$/.test(sessionId)) ctx.uiWorkspace.openSession(sessionId);
+        };
 
         function BridgeNavIcon({ size, active }) {
-          return h('svg', { width: size, height: size, viewBox: '0 0 36 36', fill: 'none', 'aria-hidden': true,
+          return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true,
             style: { display: 'block', flex: 'none' }, stroke: active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-primary)',
-            strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          h('path', { d: 'M10.5 7.5h15A3.5 3.5 0 0 1 29 11v10a3.5 3.5 0 0 1-3.5 3.5H16l-6.5 4v-4.2A3.5 3.5 0 0 1 7 21V11a3.5 3.5 0 0 1 3.5-3.5Z' }),
-          h('path', { d: 'M11.5 20.5h13M13 20.5v-7m10 7v-7M13 14.5q5 6 10 0m-5 3v3', strokeWidth: 2 }));
+            strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          h('path', { d: 'M7.5 4.25h9a4 4 0 0 1 4 4v5.25a4 4 0 0 1-4 4h-5.75L6 20.75v-3.53a4 4 0 0 1-2.5-3.72V8.25a4 4 0 0 1 4-4Z' }),
+          h('path', { d: 'M9.35 9.35h3.5a1.8 1.8 0 0 1 1.8 1.8v.5' }),
+          h('circle', { cx: 8.1, cy: 9.35, r: 1.25 }),
+          h('circle', { cx: 14.65, cy: 12.9, r: 1.25 }));
         }
 
         function LoginPanel({ state, store, reason, now }) {
@@ -742,9 +1040,8 @@ window.__ModuleLoader__.load({
           const failureId = React.useId();
           const approvalBusy = `user.approve:${user.userId}`;
           const revokeBusy = `user.revoke:${user.userId}`;
-          const otherApproved = state.snapshot.users.some(item => item.status === 'approved' && item.userId !== user.userId);
           const blockKey = pairingBlock(user, now);
-          const approvalReason = reason || (otherApproved ? t('users.onlyOne') : blockKey ? t(blockKey)
+          const approvalReason = reason || (blockKey ? t(blockKey)
             : !/^[0-9]{8}$/.test(code) ? t('disabled.code') : null);
           const localFailure = state.actionError && state.actionError.action === 'user.approve'
             && state.actionError.userId === user.userId ? state.actionError : null;
@@ -769,13 +1066,12 @@ window.__ModuleLoader__.load({
               user.pairingStatus === 'sent' && !blockKey ? h('p', { className: 'wxb-muted' }, t('users.pairingSent')) : null,
               Number.isFinite(user.pairingExpiresAt) && !blockKey ? h('p', { className: 'wxb-muted' },
                 t('users.pairingExpires', { time: formatTime(user.pairingExpiresAt) })) : null,
-              blockKey ? h('p', { className: 'wxb-error' }, t(blockKey)) : null,
-              otherApproved ? h('p', { className: 'wxb-muted' }, t('users.onlyOne')) : null),
+              blockKey ? h('p', { className: 'wxb-error' }, t(blockKey)) : null),
             h('div', { className: 'wxb-field' },
               h('label', { htmlFor: inputId }, t('users.pairingLabel')),
               h('input', { id: inputId, className: 'wxb-input wxb-pairing', type: 'text', inputMode: 'numeric',
                 autoComplete: 'one-time-code', pattern: '[0-9]{8}', maxLength: 8, value: code,
-                disabled: Boolean(reason || otherApproved || blockKey),
+                disabled: Boolean(reason || blockKey),
                 'aria-describedby': `${hintId}${localFailure ? ` ${failureId}` : ''}`,
                 'aria-invalid': Boolean(localFailure),
                 onChange: event => { setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 8)); } }),
@@ -787,16 +1083,18 @@ window.__ModuleLoader__.load({
             }))) : null,
             user.status === 'revoked' ? h('p', { className: 'wxb-muted' }, t('users.revokedHint')) : null,
             user.lastError ? h('p', { className: 'wxb-error' }, t('users.deliveryFailed')) : null,
-            user.sessionId ? h(SessionCopy, { t, sessionId: user.sessionId })
+            user.sessionId ? h(SessionCopy, { t, sessionId: user.sessionId, openSession })
               : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
         }
 
-        function BridgeSettings() {
-          const locale = React.useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
-          const store = React.useMemo(() => createController(createApi((...args) => window.fetch(...args)), {
-            online: typeof navigator === 'undefined' || navigator.onLine !== false,
-          }), []);
-          const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+        function ChannelDetailHeader({ id, title, headingRef, description, children }) {
+          return h('header', { className: 'wxb-head wxb-detail-head' },
+            h('div', null, h('h1', { id: 'wxb-main-title', className: 'wxb-channel-heading', ref: headingRef, tabIndex: -1 },
+              h(ChannelIcon, { id, size: 24 }), h('span', null, title)), description),
+            children);
+        }
+
+        function WeChatChannel({ locale, store, state, headingRef }) {
           const [clockTick, setClockTick] = React.useState(() => Date.now());
           const now = Math.max(clockTick, Date.now());
           const snapshot = state.snapshot;
@@ -810,18 +1108,6 @@ window.__ModuleLoader__.load({
             // Runs after the parent commit, even when a successful disconnect/revoke removed its trigger.
             if (confirmationFocusRequest > 0) usersHeadingRef.current?.focus();
           }, [confirmationFocusRequest]);
-          React.useEffect(() => {
-            store.start();
-            const online = () => { store.setOnline(true); };
-            const offline = () => { store.setOnline(false); };
-            window.addEventListener('online', online);
-            window.addEventListener('offline', offline);
-            return () => {
-              window.removeEventListener('online', online);
-              window.removeEventListener('offline', offline);
-              store.stop();
-            };
-          }, [store]);
           const expirations = snapshot ? [
             ...(liveLogin(snapshot, now) ? [snapshot.login.expiresAt] : []),
             ...snapshot.users.filter(user => user.status === 'pending' && Number.isFinite(user.pairingExpiresAt)
@@ -854,10 +1140,9 @@ window.__ModuleLoader__.load({
           const canResume = Boolean(snapshot && snapshot.account && connectionStatus !== 'auth-required'
             && (connectionStatus === 'paused' || connectionStatus === 'error' || !snapshot.enabled));
           const canPause = Boolean(snapshot && snapshot.account && !canResume && connectionStatus !== 'auth-required');
-          return h('div', { className: 'wxb' },
-            h('style', null, CSS),
-            h('header', { className: 'wxb-head' },
-              h('div', null, h('h2', null, t('title')), h('p', { className: 'wxb-intro' }, t('intro'))),
+          return h(React.Fragment, null,
+            h(ChannelDetailHeader, { id: 'weixin', title: t('title'), headingRef,
+              description: h('p', { className: 'wxb-intro' }, t('intro')) },
               h(ActionButton, { label: t('actions.refresh'), reason: refreshReason,
                 busy: state.refreshing, busyLabel: t('actions.refreshing'), onClick: () => { void store.refresh(); } })),
             h('section', { className: 'wxb-section' },
@@ -921,11 +1206,312 @@ window.__ModuleLoader__.load({
               h('p', { className: 'wxb-muted' }, t('details.localTime'))) : null);
         }
 
-        ctx.slots.inject('settings.section', () => ctx.slots.register({
-          name: 'settings.section', id: 'weixin-bridge', order: 25, label: () => t('title'),
-        }, BridgeSettings));
-        ctx.slots.inject('settings.section.icon', () => ctx.slots.register({
-          name: 'settings.section.icon', id: 'weixin-bridge',
+        function linkTarget(value, authorization = false) {
+          try {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.username || url.password) return null;
+            if (authorization && (url.host !== 'linear.app' || url.pathname !== '/oauth/authorize')) return null;
+            return url.href;
+          } catch (_) { return null; }
+        }
+
+        function ChannelField({ field, value, update, disabled }) {
+          const id = React.useId();
+          const type = field.kind;
+          const props = {
+            id, value, className: 'wxb-input wxb-channel-input', disabled,
+            required: Boolean(field.required), autoComplete: 'off',
+            onChange: event => update(event.target.value),
+          };
+          const defaultChoice = Object.hasOwn(field, 'default_value') ? field.default_value : '';
+          let control;
+          if (type === 'bool' || type === 'enum') {
+            const choices = type === 'bool' ? [['true', t('channels.yes')], ['false', t('channels.no')]]
+              : (field.choices || []).map(choice => [choice, choice]);
+            control = h('select', props,
+              h('option', { value: '' }, defaultChoice || t('channels.useDefault')),
+              ...choices.map(([key, label]) => h('option', { key, value: key }, label)));
+          } else if (type === 'list') {
+            control = h('textarea', { ...props, placeholder: defaultChoice, rows: 2, spellCheck: false });
+          } else {
+            // JSON may contain credentials (for example a per-client token map).
+            const secret = type === 'secret' || type === 'json';
+            control = h('input', {
+              ...props, type: secret ? 'password' : 'text', spellCheck: false,
+              inputMode: ['int', 'float'].includes(type) ? 'decimal' : undefined,
+              placeholder: secret ? undefined : defaultChoice,
+            });
+          }
+          return h('div', { className: 'wxb-field' },
+            h('label', { htmlFor: id }, field.field),
+            control);
+        }
+
+        function ChannelConfiguration({ channel, store, state, reason }) {
+          const [values, setValues] = React.useState({});
+          const [raw, setRaw] = React.useState('');
+          const [advanced, setAdvanced] = React.useState(false);
+          const [invalid, setInvalid] = React.useState(false);
+          const [saved, setSaved] = React.useState(false);
+          const configId = React.useId();
+          const fields = (Array.isArray(channel.fields) ? channel.fields : [])
+            .filter(field => field && typeof field.field === 'string'
+              && !['allowFrom', 'allow_from', 'enabled'].includes(field.field));
+          const useJson = advanced || fields.length === 0;
+          const canSave = !useJson || Boolean(raw.trim());
+          async function submit(event) {
+            event.preventDefault();
+            setSaved(false);
+            let config;
+            try {
+              config = useJson ? JSON.parse(raw) : parseChannelConfig(fields, values);
+              if (!config || typeof config !== 'object' || Array.isArray(config)) throw new TypeError('config');
+            } catch (_) {
+              setInvalid(true);
+              return;
+            }
+            setInvalid(false);
+            if (await store.run('configure', { id: channel.id, config })) {
+              setValues({});
+              setRaw('');
+              setSaved(true);
+            }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('channels.configuration')),
+            h('p', { className: 'wxb-muted' }, t('channels.configHint')),
+            h('form', { className: 'wxb-stack', onSubmit: submit, autoComplete: 'off' },
+              useJson ? h('div', { className: 'wxb-field' },
+                h('label', { htmlFor: configId }, t('channels.configJson')),
+                h('input', { className: 'wxb-input wxb-channel-input', id: configId, type: 'password', value: raw,
+                  onChange: event => { setRaw(event.target.value); setSaved(false); },
+                  disabled: Boolean(reason), spellCheck: false, autoComplete: 'off', autoCapitalize: 'off',
+                  placeholder: '{}', required: true }))
+                : h('div', { className: 'wxb-form' }, fields.map(field => h(ChannelField, {
+                  key: field.field, field, value: Object.hasOwn(values, field.field) ? values[field.field] : '',
+                  update: value => { setValues(previous => ({ ...previous, [field.field]: value })); setSaved(false); },
+                  disabled: Boolean(reason),
+                }))),
+              invalid ? h('p', { className: 'wxb-error', role: 'alert' }, t('channels.configInvalid')) : null,
+              saved ? h('p', { className: 'wxb-muted', role: 'status' }, t('channels.configSaved')) : null,
+              h('div', { className: 'wxb-actions' },
+                h(ActionButton, { type: 'submit', label: t('channels.saveConfig'), variant: 'primary',
+                  reason: reason || (!canSave ? t('channels.configJsonRequired') : null), busy: state.busy === 'configure' }),
+                fields.length > 0 ? h(ActionButton, {
+                  label: t(advanced ? 'channels.useFields' : 'channels.useJson'), reason,
+                  onClick: () => { setAdvanced(value => !value); setInvalid(false); setSaved(false); setRaw(''); setValues({}); },
+                }) : null)));
+        }
+
+        function ChannelPermissions({ channel, store, state, reason }) {
+          const id = React.useId();
+          const [draft, setDraft] = React.useState(null);
+          const [saved, setSaved] = React.useState(false);
+          const savedSenders = channel.allowedSenders.join('\n');
+          const value = draft ?? savedSenders;
+          const senders = [...new Set(value.split('\n').map(sender => sender.trim()).filter(Boolean))];
+          const changed = senders.join('\n') !== savedSenders;
+          const hasWildcard = senders.includes('*');
+          const accessReason = reason || (!channel.configured ? t('channels.configBeforeAccess') : null);
+          async function submit(event) {
+            event.preventDefault();
+            if (!changed || hasWildcard) return;
+            if (await store.run('configure', { id: channel.id, allowedSenders: senders })) {
+              setDraft(null);
+              setSaved(true);
+            }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('channels.access')),
+            h('form', { className: 'wxb-stack', onSubmit: submit },
+              h('div', { className: 'wxb-field' },
+                h('label', { htmlFor: id }, t('channels.allowedSenders')),
+                h('textarea', { className: 'wxb-input wxb-channel-input', id, rows: 3, value,
+                  onChange: event => { setDraft(event.target.value); setSaved(false); },
+                  disabled: Boolean(accessReason), spellCheck: false, autoComplete: 'off', autoCapitalize: 'off' }),
+                h('p', { className: 'wxb-muted' }, t('channels.allowedHint'))),
+              hasWildcard ? h('p', { className: 'wxb-error', role: 'alert' }, t('channels.wildcard')) : null,
+              saved ? h('p', { className: 'wxb-muted', role: 'status' }, t('channels.accessSaved')) : null,
+              h('div', { className: 'wxb-actions' },
+                h(ActionButton, { type: 'submit', label: t('channels.saveAccess'),
+                  reason: accessReason || (!changed || hasWildcard ? t('channels.accessNeedsChange') : null),
+                  busy: state.busy === 'configure' }))));
+        }
+
+        function ChannelFeatures({ channel, store, state }) {
+          const configured = channel.preferences ?? {};
+          const [draft, setDraft] = React.useState(null);
+          const [saved, setSaved] = React.useState(false);
+          const options = channel.replyOptions ?? [];
+          const names = [...new Set([...(state.snapshot?.toolChoices ?? []), ...(configured.allowedTools ?? [])])];
+          const current = draft ?? configured;
+          const granted = current.allowedTools ?? [];
+          const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
+            : state.permission ? t(state.permission) : !state.snapshot || state.transportError || state.uncertain ? t('disabled.stale') : null;
+          function set(key, value) { setDraft(previous => ({ ...(previous ?? configured), [key]: value })); setSaved(false); }
+          async function save(event) {
+            event.preventDefault();
+            if (!draft || reason) return;
+            if (await store.run('preferences.update', { id: channel.id, preferences: draft })) { setDraft(null); setSaved(true); }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('features.title')),
+            h('form', { className: 'wxb-stack', onSubmit: save },
+              h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
+                h('legend', null, t('features.tools')), h('p', { className: 'wxb-muted' }, t('features.toolsHint')),
+                names.length ? h('div', { className: 'wxb-tool-grid' }, ...names.map(name =>
+                  h('label', { key: name }, h('input', { type: 'checkbox', checked: granted.includes(name),
+                    onChange: event => set('allowedTools', event.target.checked ? [...granted, name] : granted.filter(tool => tool !== name)) }),
+                  h('code', null, name)))) : h('p', { className: 'wxb-muted' }, t('features.noTools'))),
+              options.length ? h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
+                h('legend', null, t('features.replies')), h('p', { className: 'wxb-muted' }, t('features.repliesHint')),
+                h('div', { className: 'wxb-tool-grid' }, ...options.map(key => h('label', { key },
+                  h('input', { type: 'checkbox', checked: current[key] ?? channel.replyDefaults?.[key] ?? false,
+                    onChange: event => set(key, event.target.checked) }), t(`features.${key}`))))) : null,
+              h(ActionButton, { type: 'submit', label: t('features.save'), reason: reason || (!draft ? t('features.unchanged') : null),
+                busy: state.busy === 'preferences.update' }),
+              saved ? h('p', { role: 'status', className: 'wxb-muted' }, t('features.saved')) : null));
+        }
+
+        function ChannelSessions({ sessions }) {
+          if (!sessions?.length) return null;
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('features.sessions')), h('p', { className: 'wxb-muted' }, t('features.sessionHint')),
+            h('ul', { className: 'wxb-list' }, ...sessions.map(({ sessionId, senderId, chatId, threadId, instanceId }) =>
+              h('li', { key: sessionId }, h('button', { type: 'button', className: 'wxb-row',
+                onClick: () => openSession(sessionId) },
+              h('span', null, [senderId, chatId === senderId ? null : chatId, threadId, instanceId].filter(Boolean).join(' · ')),
+              h('span', { className: 'wxb-muted' }, t('features.openSession')))))));
+        }
+
+        function ChannelDetail({ channel, store, state, headingRef }) {
+          const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+          const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
+            : state.permission ? t(state.permission) : state.transportError || state.uncertain ? t('disabled.stale') : null;
+          const payload = { id: channel.id };
+          const canPause = channel.enabled && ['connecting', 'connected'].includes(channel.status);
+          const canResume = channel.configured && !canPause;
+          const canDisconnect = channel.configured || channel.enabled || channel.allowedSenders.length > 0;
+          const connectReason = reason || (!channel.allowedSenders.length ? t('channels.accessBeforeConnect') : null);
+          const authorizationUrl = !state.transportError ? linkTarget(channel.login?.authorizationUrl, true) : null;
+          const qrUrl = !state.transportError && safeQrSource(channel.login?.qrUrl) ? channel.login.qrUrl : null;
+          const officialUrl = linkTarget(channel.officialUrl);
+          return h(React.Fragment, null,
+            h(ChannelDetailHeader, { id: channel.id, title: channel.name, headingRef,
+              description: channel.accountVerification === 'pending'
+                ? h('p', { className: 'wxb-muted' }, t('channels.pendingVerification')) : null },
+              officialUrl ? h('a', { className: 'wxb-link', href: officialUrl, target: '_blank', rel: 'noopener noreferrer' },
+                t('channels.platformDocs')) : null),
+            state.transportError ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
+            h('section', { className: 'wxb-section' },
+              h('div', { className: 'wxb-status', role: 'status' },
+                h(StatusDot, { status: state.transportError ? 'disconnected' : channel.status }),
+                state.transportError ? t('status.unavailable') : t(`status.${channel.status}`)),
+              channel.errorCode && !state.transportError ? h('p', { className: 'wxb-error', role: 'alert' },
+                t('channels.runtimeError'), ' ', /^[A-Z0-9_]{1,64}$/.test(channel.errorCode) ? h('code', null, channel.errorCode) : null) : null,
+              Number.isSafeInteger(channel.uncertainReplies) && channel.uncertainReplies > 0
+                ? h('p', { className: 'wxb-muted' }, t('channels.uncertain', { count: String(channel.uncertainReplies) })) : null,
+              state.actionError?.channelId === channel.id
+                ? h('p', { className: 'wxb-error', role: 'alert' }, t(state.actionError.key)) : null,
+              qrUrl ? h('img', { className: 'wxb-qr', src: qrUrl, alt: t('channels.qrAlt') }) : null,
+              authorizationUrl ? h('a', { className: 'wxb-link', href: authorizationUrl, target: '_blank',
+                rel: 'noopener noreferrer' }, t('channels.openAuthorization')) : null,
+              h('div', { className: 'wxb-actions' },
+                channel.interactiveLogin && channel.configured && channel.status !== 'connected' ? h(ActionButton, {
+                  label: t('channels.login'), reason: connectReason, busy: state.busy === 'login.start',
+                  onClick: () => { void store.run('login.start', payload); },
+                }) : null,
+                canResume ? h(ActionButton, { label: t('channels.connect'), reason: connectReason,
+                  busy: state.busy === 'connection.resume', onClick: () => { void store.run('connection.resume', payload); } }) : null,
+                canPause || qrUrl || authorizationUrl ? h(ActionButton, { label: t('actions.pause'), reason,
+                  busy: state.busy === 'connection.pause', onClick: () => { void store.run('connection.pause', payload); } }) : null,
+                canDisconnect && !confirmDisconnect ? h(ActionButton, { label: t('actions.disconnect'), reason, variant: 'danger',
+                  onClick: () => setConfirmDisconnect(true) }) : null),
+              confirmDisconnect ? h('div', { className: 'wxb-confirm' },
+                h('p', null, t('channels.disconnectHint')),
+                h('div', { className: 'wxb-actions' },
+                  h(ActionButton, { label: t('confirm.cancel'), onClick: () => setConfirmDisconnect(false) }),
+                  h(ActionButton, { label: t('confirm.disconnect'), variant: 'danger', reason,
+                    busy: state.busy === 'connection.disconnect', onClick: async () => {
+                      if (await store.run('connection.disconnect', payload)) setConfirmDisconnect(false);
+                    } }))) : null),
+            h(ChannelConfiguration, { channel, store, state, reason }),
+            h(ChannelPermissions, { channel, store, state, reason }));
+        }
+
+        function ChannelManager() {
+          const locale = React.useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
+          const [weixinStore, weixin] = useBridgeController(createApi);
+          const [store, state] = useBridgeController(createChannelApi);
+          const [selectedId, setSelectedId] = React.useState(null);
+          const page = React.useRef(null);
+          const detailHeading = React.useRef(null);
+          const listScrollTop = React.useRef(0);
+          const lastSelected = React.useRef(null);
+          const rows = React.useRef(new Map());
+          const weixinEntry = {
+            ...state.snapshot?.channels.find(channel => channel.id === 'weixin'),
+            id: 'weixin', name: t('channels.weixin'),
+            status: !weixin.transportError ? weixin.snapshot?.connectionStatus : null,
+            configured: Boolean(weixin.snapshot?.account),
+          };
+          const channels = [weixinEntry, ...(state.snapshot?.channels || []).filter(channel => channel.id !== 'weixin')];
+          const selected = channels.find(channel => channel.id === selectedId);
+          const detailId = selected?.id;
+          React.useLayoutEffect(() => {
+            if (!page.current) return;
+            if (detailId) {
+              page.current.scrollTop = 0;
+              detailHeading.current?.focus({ preventScroll: true });
+            } else if (lastSelected.current) {
+              page.current.scrollTop = listScrollTop.current;
+              rows.current.get(lastSelected.current)?.focus({ preventScroll: true });
+            }
+          }, [detailId]);
+          const available = state.snapshot && !state.transportError;
+          return h('div', { className: 'wxb-page', ref: page }, h('div', { className: 'wxb', 'aria-labelledby': 'wxb-main-title' },
+            h('style', null, CSS),
+            selected ? h('button', {
+              type: 'button', className: 'wxb-crumb', 'aria-label': t('channels.back'),
+              onClick: () => setSelectedId(null),
+            }, h('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+              h('path', { d: 'm9 4.5-3.5 3.5L9 11.5', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' })),
+            t('channels.title')) : h('header', { className: 'wxb-head' },
+              h('div', null, h('h1', { id: 'wxb-main-title' }, t('channels.title'))),
+              h(ActionButton, { label: t('actions.refresh'), busy: state.refreshing || weixin.refreshing,
+                busyLabel: t('actions.refreshing'), reason: !state.online ? t('disabled.offline') : null,
+                onClick: () => { void store.refresh(); void weixinStore.refresh(); } })),
+            !selected && state.transportError
+              ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
+            selected ? h(React.Fragment, { key: selected.id },
+              selected.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin, headingRef: detailHeading })
+                : h(ChannelDetail, { channel: selected, store, state, headingRef: detailHeading }),
+              h(ChannelFeatures, { channel: selected, store, state }),
+              selected.id !== 'weixin' ? h(ChannelSessions, { sessions: selected.sessions }) : null)
+                : h('ul', { className: 'wxb-list' }, channels.map(channel => {
+                  const status = channel.id === 'weixin' ? channel.status : available ? channel.status : null;
+                  const isLoading = channel.id === 'weixin' ? weixin.initialLoading : state.initialLoading;
+                  return h('li', { key: channel.id }, h('button', { className: 'wxb-row', type: 'button',
+                    ref: element => { if (element) rows.current.set(channel.id, element); else rows.current.delete(channel.id); },
+                    onClick: () => {
+                      listScrollTop.current = page.current?.scrollTop ?? 0;
+                      lastSelected.current = channel.id;
+                      setSelectedId(channel.id);
+                    },
+                  },
+                  h('span', { className: 'wxb-channel-label' }, h(ChannelIcon, { id: channel.id }), h('span', null, channel.name)),
+                  h('span', { className: 'wxb-status' }, h(StatusDot, { status: status || 'disconnected' }),
+                    t(status ? `status.${status}` : isLoading ? 'status.loading' : 'status.unavailable')),
+                  status ? h('span', { className: 'wxb-muted' },
+                    t(channel.configured ? 'channels.configured' : 'channels.unconfigured')) : null));
+                }))));
+        }
+
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main', key: PANEL_ID, locale: NS,
+        }, ChannelManager));
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('channels.title'),
         }, BridgeNavIcon));
       },
     };
