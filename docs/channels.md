@@ -56,3 +56,5 @@ Windows 可用 `py -3.12 -m venv <目录>`，然后使用 `<目录>\Scripts\pyth
 WebSocket 连上后会收到 `event: "ready"` 及本连接的 `chat_id`。发送文本，或发送 `{"type":"message","content":"你好","chat_id":"…","turn_id":"消息唯一编号"}`。断线重连后用同一 `turn_id` 重投可去重。该端点也接受 `media: [{ "name": "note.txt", "mime": "text/plain", "data": "<base64>" }]` 形式的内联附件，最多 8 项，合计不超过 1 MiB。
 
 标准库测试用 `python3 -m unittest discover -s transport -p 'test_*.py'` 运行。安装全部 SDK 后，可用 `DSH_TRANSPORT_SMOKE=1` 增加 17 个上游运行时的加载及路由契约验证。再设置 `DSH_TRANSPORT_LOOPBACK=1` 可运行 NapCat 本地协议测试。
+
+渠道图标随插件加载。Discord、Linear、Matrix、Mattermost、QQ、Signal、Telegram、微信和 WhatsApp 的图形取自 [Simple Icons 16.37.0](https://github.com/simple-icons/simple-icons/tree/16.37.0)，图标库采用 CC0-1.0，品牌标识属于各自权利人。其余图标为本插件绘制。 [Simple Icons 品牌标识说明](https://github.com/simple-icons/simple-icons/blob/16.37.0/DISCLAIMER.md)

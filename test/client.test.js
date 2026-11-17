@@ -127,6 +127,19 @@ test('client contributes a single page after Automation tasks through the offici
   assert.equal(slots.get('sidebar.panellist').label(), 'channels.title');
 });
 
+test('channel detail exposes a left-aligned parent button and a single channel heading', () => {
+  assert.match(source, /h\('button', \{\s*type: 'button', className: 'wxb-crumb', 'aria-label': t\('channels.back'\),[\s\S]*?t\('channels.title'\)\)/);
+  assert.match(source, /h\(ChannelDetailHeader, \{ id: 'weixin', title: t\('title'\), headingRef,/);
+  assert.match(source, /h\(ChannelDetailHeader, \{ id: channel.id, title: channel.name, headingRef,/);
+  assert.match(source, /h\('h1', \{ id: 'wxb-main-title', className: 'wxb-channel-heading', ref: headingRef, tabIndex: -1 \},/);
+});
+
+test('channel navigation focuses the detail heading and restores the selected row and list scroll', () => {
+  assert.match(source, /page\.current\.scrollTop = 0;\s*detailHeading\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(source, /page\.current\.scrollTop = listScrollTop\.current;\s*rows\.current\.get\(lastSelected\.current\)\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(source, /listScrollTop\.current = page\.current\?\.scrollTop \?\? 0;[\s\S]*?setSelectedId\(channel\.id\)/);
+});
+
 test('channel controller aborts its owner request and cancels every timer on unmount', async () => {
   const clock = fakeClock();
   const { api, requests } = queueApi();
@@ -211,7 +224,7 @@ test('interface styling uses only inspected alias theme variables', () => {
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\(/i);
   const tokens = [...css.matchAll(/var\((--[^), ]+)/g)].map(match => match[1]);
   const inspected = new Set([
-    '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-border-l2',
+    '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary', '--dsw-alias-border-l2',
     '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2',
     '--dsw-alias-brand-primary', '--dsw-alias-state-error-primary', '--dsw-alias-state-idle-primary',
     '--dsw-alias-state-success-primary', '--dsw-alias-state-warn-primary',
@@ -224,17 +237,39 @@ test('interface styling uses only inspected alias theme variables', () => {
   assert.match(css, /@media\(pointer:coarse\)/);
 });
 
-test('icon is bounded self-contained 36px geometry without a background tile', async () => {
+test('the plugin icon uses a bounded DSH-style tile and shares its glyph with the sidebar', async () => {
   const icon = await readFile(new URL('../icon.svg', import.meta.url), 'utf8');
   assert.match(icon, /width="36" height="36" viewBox="0 0 36 36"/);
-  assert.doesNotMatch(icon, /<(?:script|style|image|foreignObject|text|rect|animate)\b|\bon\w+=|href=/i);
+  assert.match(icon, /<rect x="6" y="6" width="24" height="24" rx="6" fill="url\(#channel-tile\)"\/>/);
+  assert.match(icon, /<linearGradient id="channel-tile"/);
+  assert.doesNotMatch(icon, /<(?:script|style|image|foreignObject|text|animate)\b|\bon\w+=|href=/i);
   const stack = [];
   for (const tag of icon.matchAll(/<(\/?)([\w:-]+)\b[^>]*?(\/?)>/g)) {
-    assert.ok(['svg', 'path'].includes(tag[2]));
+    assert.ok(['svg', 'defs', 'linearGradient', 'stop', 'rect', 'g', 'path', 'circle'].includes(tag[2]));
     if (tag[1]) assert.equal(stack.pop(), tag[2]);
     else if (!tag[3]) stack.push(tag[2]);
   }
   assert.equal(stack.length, 0);
+  const nav = source.slice(source.indexOf('function BridgeNavIcon'), source.indexOf('function LoginPanel'));
+  assert.match(nav, /viewBox: '0 0 24 24'/);
+  for (const [, glyph] of icon.matchAll(/<path d="([^"]*)"/g)) assert.ok(nav.includes(glyph));
+});
+
+test('every registered channel has a bundled icon used in both its list row and detail heading', async () => {
+  const catalog = JSON.parse(await readFile(new URL('../transport/channels.json', import.meta.url), 'utf8'));
+  const glyphs = source.match(/\/\/ BEGIN CHANNEL GLYPHS\n([\s\S]*?)\/\/ END CHANNEL GLYPHS/);
+  assert.ok(glyphs);
+  const definitions = vm.runInNewContext(`${glyphs[1]}\nCHANNEL_GLYPHS;`);
+  assert.deepEqual(Object.keys(definitions).sort(), catalog.channels.map(({ id }) => id).sort());
+  for (const { paths } of Object.values(definitions)) {
+    assert.ok(paths.length > 0);
+    for (const path of paths) {
+      assert.match(path.d, /^[mM][mdzlhvcsqtae0-9\s.,+\-]+$/i);
+      assert.ok(Object.keys(path).every(key => ['d', 'fill', 'stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin'].includes(key)));
+    }
+  }
+  assert.match(source, /className: 'wxb-channel-label'[^\n]*h\(ChannelIcon, \{ id: channel\.id \}\)/);
+  assert.match(source, /h\(ChannelIcon, \{ id, size: 24 \}\).*title/);
 });
 
 test('QR safety accepts only local raster data, and expiry is an exact boundary', () => {

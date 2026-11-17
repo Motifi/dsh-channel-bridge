@@ -150,7 +150,7 @@ window.__ModuleLoader__.load({
         "notice.revoked": "Access revoked. DSH conversation history was kept.",
         "channels.title": "Message channels",
         "channels.weixin": "WeChat",
-        "channels.back": "All channels",
+        "channels.back": "Back to message channels",
         "channels.configured": "Configured",
         "channels.unconfigured": "Not configured",
         "channels.pendingVerification": "Pending account verification",
@@ -326,7 +326,7 @@ window.__ModuleLoader__.load({
         "notice.revoked": "已撤销授权，DSH 会话历史已保留。",
         "channels.title": "消息渠道",
         "channels.weixin": "微信",
-        "channels.back": "所有渠道",
+        "channels.back": "返回消息渠道",
         "channels.configured": "已配置",
         "channels.unconfigured": "未配置",
         "channels.pendingVerification": "待账号验证",
@@ -701,6 +701,82 @@ window.__ModuleLoader__.load({
 
     // Controls follow the installed Settings Language row and Plugin Manager type/spacing patterns.
     // No literal interface colors or private Harness Client imports.
+    // Brand paths from Simple Icons 16.37.0 (CC0-1.0): Discord, Linear, Matrix, Mattermost,
+    // QQ, Signal, Telegram, WeChat and WhatsApp. Brand marks belong to their respective owners.
+    // The other glyphs are drawn for this integration; all assets are kept offline.
+    // BEGIN CHANNEL GLYPHS
+    const CHANNEL_GLYPHS = {
+      "dingtalk": { "color": "#1677FF", "paths": [
+        {"d": "M4 4.1 21 9a.8.8 0 0 1 .35 1.28l-8.1 8.2a.57.57 0 0 1-.97-.52l1.16-5.06-3.03-.87a4.65 4.65 0 0 1-2.44-1.84l-.4-.6 5.2 1.47.19-.77-6.2-1.79a4.57 4.57 0 0 1-2.66-2.2l-.24-.49 5.8 1.64-.31-.93L5.97 5.7A3.3 3.3 0 0 1 4 4.1Z"},
+      ] },
+      "discord": { "color": "#5865F2", "paths": [
+        {"d": "M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"},
+      ] },
+      "email": { "color": "#5178A7", "paths": [
+        {"d": "M5.5 5.7h13a2 2 0 0 1 2 2v8.6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.7a2 2 0 0 1 2-2Zm-1.8 2 7.1 5.05a2 2 0 0 0 2.4 0l7.1-5.05", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "feishu": { "color": "#2261F2", "paths": [
+        {"d": "M3 5.15 12.3 7.4 19.8 3c.7-.4 1.45.27 1.16.99l-3.41 8.43a7 7 0 0 1-6.5 4.39H8.65l3.52-4.96-4.32-.95A6.97 6.97 0 0 1 3 5.15Z", "fill": "#27A7DB"},
+        {"d": "m12.3 7.4 7.5-4.4c.7-.4 1.45.27 1.16.99l-3.41 8.43a7 7 0 0 1-6.5 4.39H7.9c-1.8 0-3.5.69-4.8 1.93l4.29-6.42c1.02-1.5 2.1-2.35 3.8-3.75L12.3 7.4Z"},
+        {"d": "M7.4 12.32c1.02-1.5 2.1-2.35 3.8-3.75l1.1-1.17-3.41 2.01-2.25 3.73Z", "fill": "#38C6B5"},
+      ] },
+      "linear": { "color": "#5E6AD2", "paths": [
+        {"d": "M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"},
+      ] },
+      "matrix": { "color": "currentColor", "paths": [
+        {"d": "M.632.55v22.9H2.28V24H0V0h2.28v.55zm7.043 7.26v1.157h.033c.309-.443.683-.784 1.117-1.024.433-.245.936-.365 1.5-.365.54 0 1.033.107 1.481.314.448.208.785.582 1.02 1.108.254-.374.6-.706 1.034-.992.434-.287.95-.43 1.546-.43.453 0 .872.056 1.26.167.388.11.716.286.993.53.276.245.489.559.646.951.152.392.23.863.23 1.417v5.728h-2.349V11.52c0-.286-.01-.559-.032-.812a1.755 1.755 0 0 0-.18-.66 1.106 1.106 0 0 0-.438-.448c-.194-.11-.457-.166-.785-.166-.332 0-.6.064-.803.189a1.38 1.38 0 0 0-.48.499 1.946 1.946 0 0 0-.231.696 5.56 5.56 0 0 0-.06.785v4.768h-2.35v-4.8c0-.254-.004-.503-.018-.752a2.074 2.074 0 0 0-.143-.688 1.052 1.052 0 0 0-.415-.503c-.194-.125-.476-.19-.854-.19-.111 0-.259.024-.439.074-.18.051-.36.143-.53.282-.171.138-.319.337-.439.595-.12.259-.18.6-.18 1.02v4.966H5.46V7.81zm15.693 15.64V.55H21.72V0H24v24h-2.28v-.55z"},
+      ] },
+      "mattermost": { "color": "#0058CC", "paths": [
+        {"d": "M12.081 0C7.048-.034 2.339 3.125.637 8.153c-2.125 6.276 1.24 13.086 7.516 15.21 6.276 2.125 13.086-1.24 15.21-7.516 1.727-5.1-.172-10.552-4.311-13.557l.126 2.547c2.065 2.282 2.88 5.512 1.852 8.549-1.534 4.532-6.594 6.915-11.3 5.321-4.708-1.593-7.28-6.559-5.745-11.092 1.031-3.046 3.655-5.121 6.694-5.67l1.642-1.94A4.87 4.87 0 0 0 12.08 0zm3.528 1.094a.284.284 0 0 0-.123.024l-.004.001a.33.33 0 0 0-.109.071c-.145.142-.657.828-.657.828L13.6 3.4l-1.3 1.585-2.232 2.776s-1.024 1.278-.798 2.851c.226 1.574 1.396 2.34 2.304 2.648.907.307 2.302.408 3.438-.704 1.135-1.112 1.098-2.75 1.098-2.75l-.087-3.56-.07-2.05-.047-1.775s.01-.856-.02-1.057a.33.33 0 0 0-.035-.107l-.006-.012-.007-.011a.277.277 0 0 0-.229-.14z"},
+      ] },
+      "mochat": { "color": "#168867", "paths": [
+        {"d": "M3.8 17.2V6.8a1 1 0 0 1 1-1h14.4a1 1 0 0 1 1 1v10.4a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1Z M7.8 9.2l2.7 2.8-2.7 2.8m4.7 0h3.8", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "msteams": { "color": "#6458CD", "paths": [
+        {"d": "M18.6 3.65a2.65 2.65 0 1 1 0 5.3 2.65 2.65 0 0 1 0-5.3Zm-.9 6.85h3.9c.55 0 1 .45 1 1v2.95a4.15 4.15 0 0 1-4.15 4.15h-.75v-8.1Z", "fill": "#8C83E3"},
+        {"d": "M12.5 2.9a3.05 3.05 0 1 1 0 6.1 3.05 3.05 0 0 1 0-6.1Zm-4.7 7.6h9.4c.55 0 1 .45 1 1v4.02a5.7 5.7 0 0 1-11.4 0V11.5c0-.55.45-1 1-1Z", "fill": "#7569E5"},
+        {"d": "M2.3 7.75h9.1c.68 0 1.23.55 1.23 1.23v8.66c0 .68-.55 1.23-1.23 1.23H2.3c-.68 0-1.23-.55-1.23-1.23V8.98c0-.68.55-1.23 1.23-1.23Z"},
+        {"d": "M9.45 10.75v1.31H7.54v4.12H5.97v-4.12H4.05v-1.31h5.4Z", "fill": "#fff"},
+      ] },
+      "napcat": { "color": "#DE7426", "paths": [
+        {"d": "M3.6 12.7c0-1.54.53-2.96 1.4-4.08L4.7 4.1a.65.65 0 0 1 1.02-.57l3.28 2.26a9.9 9.9 0 0 1 6 0l3.28-2.26a.65.65 0 0 1 1.02.57L19 8.62c.87 1.12 1.4 2.54 1.4 4.08 0 4.3-3.76 7.1-8.4 7.1s-8.4-2.8-8.4-7.1Z M7.4 13.2a1.2 1.2 0 0 1 2.25 0m4.7 0a1.2 1.2 0 0 1 2.25 0m-5.7 3.04 1.1.85 1.1-.85", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "qq": { "color": "#1087C0", "paths": [
+        {"d": "M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"},
+      ] },
+      "signal": { "color": "#3B45FD", "paths": [
+        {"d": "M12 0q-.934 0-1.83.139l.17 1.111a11 11 0 0 1 3.32 0l.172-1.111A12 12 0 0 0 12 0M9.152.34A12 12 0 0 0 5.77 1.742l.584.961a10.8 10.8 0 0 1 3.066-1.27zm5.696 0-.268 1.094a10.8 10.8 0 0 1 3.066 1.27l.584-.962A12 12 0 0 0 14.848.34M12 2.25a9.75 9.75 0 0 0-8.539 14.459c.074.134.1.292.064.441l-1.013 4.338 4.338-1.013a.62.62 0 0 1 .441.064A9.7 9.7 0 0 0 12 21.75c5.385 0 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25m-7.092.068a12 12 0 0 0-2.59 2.59l.909.664a11 11 0 0 1 2.345-2.345zm14.184 0-.664.909a11 11 0 0 1 2.345 2.345l.909-.664a12 12 0 0 0-2.59-2.59M1.742 5.77A12 12 0 0 0 .34 9.152l1.094.268a10.8 10.8 0 0 1 1.269-3.066zm20.516 0-.961.584a10.8 10.8 0 0 1 1.27 3.066l1.093-.268a12 12 0 0 0-1.402-3.383M.138 10.168A12 12 0 0 0 0 12q0 .934.139 1.83l1.111-.17A11 11 0 0 1 1.125 12q0-.848.125-1.66zm23.723.002-1.111.17q.125.812.125 1.66c0 .848-.042 1.12-.125 1.66l1.111.172a12.1 12.1 0 0 0 0-3.662M1.434 14.58l-1.094.268a12 12 0 0 0 .96 2.591l-.265 1.14 1.096.255.36-1.539-.188-.365a10.8 10.8 0 0 1-.87-2.35m21.133 0a10.8 10.8 0 0 1-1.27 3.067l.962.584a12 12 0 0 0 1.402-3.383zm-1.793 3.848a11 11 0 0 1-2.345 2.345l.664.909a12 12 0 0 0 2.59-2.59zm-19.959 1.1L.357 21.48a1.8 1.8 0 0 0 2.162 2.161l1.954-.455-.256-1.095-1.953.455a.675.675 0 0 1-.81-.81l.454-1.954zm16.832 1.769a10.8 10.8 0 0 1-3.066 1.27l.268 1.093a12 12 0 0 0 3.382-1.402zm-10.94.213-1.54.36.256 1.095 1.139-.266c.814.415 1.683.74 2.591.961l.268-1.094a10.8 10.8 0 0 1-2.35-.869zm3.634 1.24-.172 1.111a12.1 12.1 0 0 0 3.662 0l-.17-1.111q-.812.125-1.66.125a11 11 0 0 1-1.66-.125"},
+      ] },
+      "slack": { "color": "#4A154B", "paths": [
+        {"d": "M8.9 2.4a2.02 2.02 0 0 1 2.02 2.02v4.43a2.02 2.02 0 0 1-4.04 0V4.42A2.02 2.02 0 0 1 8.9 2.4ZM4.25 6.87c1.12 0 2.02.9 2.02 2.02v2.02H4.25a2.02 2.02 0 1 1 0-4.04Z", "fill": "#36C5F0"},
+        {"d": "M13.12 4.42a2.02 2.02 0 0 1 2.02 2.02v.43h4.44a2.02 2.02 0 0 1 0 4.04h-4.44a2.02 2.02 0 0 1-2.02-2.02V4.42Zm2.02-.01V2.4a2.01 2.01 0 1 1-2.01 2.01h2.01Z", "fill": "#2EB67D"},
+        {"d": "M15.13 13.12a2.02 2.02 0 0 1 2.02 2.02v4.44a2.02 2.02 0 0 1-4.04 0v-4.44c0-1.12.9-2.02 2.02-2.02Zm4.67 0a2.02 2.02 0 1 1 0 4.04c-1.11 0-2.02-.9-2.02-2.02v-2.02h2.02Z", "fill": "#ECB22E"},
+        {"d": "M4.42 13.12h4.43a2.02 2.02 0 1 1 0 4.04H4.42a2.02 2.02 0 1 1 0-4.04ZM8.87 17.76h2.04v2.02a2.02 2.02 0 1 1-2.04-2.02Z", "fill": "#E01E5A"},
+      ] },
+      "telegram": { "color": "#26A5E4", "paths": [
+        {"d": "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"},
+      ] },
+      "websocket": { "color": "#6077DC", "paths": [
+        {"d": "m8.1 5.3-4 4a2.1 2.1 0 0 0 0 2.97l4 4m7.8 2.43 4-4a2.1 2.1 0 0 0 0-2.97l-4-4m-7.35 6.96 6.9-6.58 M9.3 5.1a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Zm2.7 13.8a1.35 1.35 0 1 0 2.7 0 1.35 1.35 0 1 0-2.7 0Z", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+      ] },
+      "wecom": { "color": "#247AE6", "paths": [
+        {"d": "M2.8 12.3a7.5 7.5 0 1 1 13.3 4.7l.3 2.65-2.9-1.12a7.9 7.9 0 0 1-3.2.65c-4.15 0-7.5-3.08-7.5-6.88Z", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M7.7 12.3h5.2m-2.6-2.6v5.2", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M19.9 4.9a1.35 1.35 0 1 1-2.7 0 1.35 1.35 0 0 1 2.7 0Zm2.25 4.33a1.35 1.35 0 1 1-2.7 0 1.35 1.35 0 0 1 2.7 0Z", "fill": "#32BF91"},
+      ] },
+      "weixin": { "color": "#07C160", "paths": [
+        {"d": "M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.27-.027-.407-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"},
+      ] },
+      "whatsapp": { "color": "#168A50", "paths": [
+        {"d": "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"},
+      ] },
+      "whatsapp_agent": { "color": "#168A50", "paths": [
+        {"d": "M5 5.5h14a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-7.8l-4.6 2.7V18H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2Z M12 3.2v2.3m-3.1 8.4h6.2", "fill": "none", "stroke": "currentColor", "strokeWidth": 1.8, "strokeLinecap": "round", "strokeLinejoin": "round"},
+        {"d": "M9.9 10.4a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0Zm6.5 0a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0Z"},
+      ] },
+    };
+    // END CHANNEL GLYPHS
+
     const CSS = `
 .wxb{box-sizing:border-box;min-width:0;max-width:800px;color:var(--dsw-alias-label-primary);font-size:14px;line-height:22px;padding:8px 0 28px}
 .wxb *{box-sizing:border-box}.wxb h2,.wxb h3,.wxb p,.wxb ol,.wxb dl{margin:0}.wxb h2{font-size:20px;line-height:28px;font-weight:500}.wxb h3{font-size:14px;line-height:22px;font-weight:500}
@@ -715,6 +791,11 @@ window.__ModuleLoader__.load({
 .wxb-details{display:grid;grid-template-columns:minmax(110px,160px) minmax(0,1fr);gap:8px 16px;font-size:13px;line-height:20px}.wxb-details dt{color:var(--dsw-alias-label-secondary)}.wxb-details dd{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text}.wxb-code{font:inherit;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.wxb-session{display:block;max-width:100%;padding:4px 0;border-radius:3px;font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:all}.wxb-confirm{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wxb-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}.wxb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .wxb-page{height:100%;min-height:0;min-width:0;overflow:auto;padding:24px clamp(16px,5vw,56px);background:var(--dsw-alias-bg-base)}
 .wxb-page>.wxb{max-width:960px;margin-inline:auto}.wxb-page h1{font-size:26px;line-height:34px;font-weight:550;margin:0}
+.wxb-crumb{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 4px;margin-inline-start:-4px;border:0;border-radius:4px;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12.5px;cursor:pointer}
+.wxb-crumb svg{flex:none}.wxb-crumb:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.wxb-detail-head{margin-block:20px 2px}.wxb-page .wxb-detail-head h1{font-size:20px;line-height:28px;font-weight:500}
+.wxb-channel-label,.wxb-channel-heading{display:flex;align-items:center;gap:10px;min-width:0;overflow-wrap:anywhere}
+.wxb-channel-icon{display:block;flex:none}
 .wxb-list{list-style:none;padding:0;margin:18px 0 0;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;overflow:hidden}
 .wxb-list>li+li{border-top:1px solid var(--dsw-alias-border-l2)}
 .wxb-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,auto) auto;gap:12px;align-items:center;text-align:start;min-height:48px;width:100%;padding:8px 14px;border:0;background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit;cursor:pointer}
@@ -722,9 +803,9 @@ window.__ModuleLoader__.load({
 .wxb-subhead{margin-block:16px 2px}.wxb-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px}
 .wxb-field .wxb-channel-input{width:100%}.wxb-field textarea.wxb-channel-input{height:auto;min-height:72px;resize:vertical}
 .wxb-link{color:var(--dsw-alias-brand-primary)}
-@media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}}
+@media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}.wxb-crumb:hover{color:var(--dsw-alias-label-primary)}}
 @media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}.wxb-row{grid-template-columns:minmax(0,1fr) auto}}
-@media(pointer:coarse){.wxb-input{font-size:16px}.wxb-button{min-height:40px}}
+@media(pointer:coarse){.wxb-input{font-size:16px}.wxb-button,.wxb-crumb{min-height:40px}}
 `;
 
     function ActionButton({ label, busyLabel, busy, reason, onClick, variant, buttonRef, type }) {
@@ -741,6 +822,14 @@ window.__ModuleLoader__.load({
 
     function StatusDot({ status }) {
       return h('span', { className: 'wxb-dot', 'data-status': status, 'aria-hidden': true });
+    }
+
+    function ChannelIcon({ id, size = 18 }) {
+      if (!Object.hasOwn(CHANNEL_GLYPHS, id)) return null;
+      const { color, paths } = CHANNEL_GLYPHS[id];
+      return h('svg', { className: 'wxb-channel-icon', width: size, height: size, viewBox: '0 0 24 24',
+        fill: 'currentColor', style: { color }, 'aria-hidden': true, focusable: false },
+      paths.map((path, index) => h('path', { ...path, key: index })));
     }
 
     function useBridgeController(apiFactory) {
@@ -839,11 +928,13 @@ window.__ModuleLoader__.load({
         const localeSnapshot = () => ctx.locale.getSnapshot();
 
         function BridgeNavIcon({ size, active }) {
-          return h('svg', { width: size, height: size, viewBox: '0 0 36 36', fill: 'none', 'aria-hidden': true,
+          return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true,
             style: { display: 'block', flex: 'none' }, stroke: active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-primary)',
-            strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          h('path', { d: 'M10.5 7.5h15A3.5 3.5 0 0 1 29 11v10a3.5 3.5 0 0 1-3.5 3.5H16l-6.5 4v-4.2A3.5 3.5 0 0 1 7 21V11a3.5 3.5 0 0 1 3.5-3.5Z' }),
-          h('path', { d: 'M11.5 20.5h13M13 20.5v-7m10 7v-7M13 14.5q5 6 10 0m-5 3v3', strokeWidth: 2 }));
+            strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          h('path', { d: 'M7.5 4.25h9a4 4 0 0 1 4 4v5.25a4 4 0 0 1-4 4h-5.75L6 20.75v-3.53a4 4 0 0 1-2.5-3.72V8.25a4 4 0 0 1 4-4Z' }),
+          h('path', { d: 'M9.35 9.35h3.5a1.8 1.8 0 0 1 1.8 1.8v.5' }),
+          h('circle', { cx: 8.1, cy: 9.35, r: 1.25 }),
+          h('circle', { cx: 14.65, cy: 12.9, r: 1.25 }));
         }
 
         function LoginPanel({ state, store, reason, now }) {
@@ -956,7 +1047,14 @@ window.__ModuleLoader__.load({
               : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
         }
 
-        function WeChatChannel({ locale, store, state }) {
+        function ChannelDetailHeader({ id, title, headingRef, description, children }) {
+          return h('header', { className: 'wxb-head wxb-detail-head' },
+            h('div', null, h('h1', { id: 'wxb-main-title', className: 'wxb-channel-heading', ref: headingRef, tabIndex: -1 },
+              h(ChannelIcon, { id, size: 24 }), h('span', null, title)), description),
+            children);
+        }
+
+        function WeChatChannel({ locale, store, state, headingRef }) {
           const [clockTick, setClockTick] = React.useState(() => Date.now());
           const now = Math.max(clockTick, Date.now());
           const snapshot = state.snapshot;
@@ -1003,8 +1101,8 @@ window.__ModuleLoader__.load({
             && (connectionStatus === 'paused' || connectionStatus === 'error' || !snapshot.enabled));
           const canPause = Boolean(snapshot && snapshot.account && !canResume && connectionStatus !== 'auth-required');
           return h(React.Fragment, null,
-            h('header', { className: 'wxb-head wxb-subhead' },
-              h('div', null, h('h2', null, t('title')), h('p', { className: 'wxb-intro' }, t('intro'))),
+            h(ChannelDetailHeader, { id: 'weixin', title: t('title'), headingRef,
+              description: h('p', { className: 'wxb-intro' }, t('intro')) },
               h(ActionButton, { label: t('actions.refresh'), reason: refreshReason,
                 busy: state.refreshing, busyLabel: t('actions.refreshing'), onClick: () => { void store.refresh(); } })),
             h('section', { className: 'wxb-section' },
@@ -1200,7 +1298,7 @@ window.__ModuleLoader__.load({
                   busy: state.busy === 'configure' }))));
         }
 
-        function ChannelDetail({ channel, store, state }) {
+        function ChannelDetail({ channel, store, state, headingRef }) {
           const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
           const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
             : state.permission ? t(state.permission) : state.transportError || state.uncertain ? t('disabled.stale') : null;
@@ -1213,12 +1311,12 @@ window.__ModuleLoader__.load({
           const qrUrl = !state.transportError && safeQrSource(channel.login?.qrUrl) ? channel.login.qrUrl : null;
           const officialUrl = linkTarget(channel.officialUrl);
           return h(React.Fragment, null,
-            h('div', { className: 'wxb-head wxb-subhead' },
-              h('div', null,
-                h('h2', null, channel.name),
-                channel.accountVerification === 'pending' ? h('p', { className: 'wxb-muted' }, t('channels.pendingVerification')) : null),
+            h(ChannelDetailHeader, { id: channel.id, title: channel.name, headingRef,
+              description: channel.accountVerification === 'pending'
+                ? h('p', { className: 'wxb-muted' }, t('channels.pendingVerification')) : null },
               officialUrl ? h('a', { className: 'wxb-link', href: officialUrl, target: '_blank', rel: 'noopener noreferrer' },
                 t('channels.platformDocs')) : null),
+            state.transportError ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
             h('section', { className: 'wxb-section' },
               h('div', { className: 'wxb-status', role: 'status' },
                 h(StatusDot, { status: state.transportError ? 'disconnected' : channel.status }),
@@ -1260,13 +1358,11 @@ window.__ModuleLoader__.load({
           const [weixinStore, weixin] = useBridgeController(createApi);
           const [store, state] = useBridgeController(createChannelApi);
           const [selectedId, setSelectedId] = React.useState(null);
+          const page = React.useRef(null);
           const detailHeading = React.useRef(null);
+          const listScrollTop = React.useRef(0);
           const lastSelected = React.useRef(null);
           const rows = React.useRef(new Map());
-          React.useEffect(() => {
-            if (selectedId) detailHeading.current?.focus();
-            else if (lastSelected.current) rows.current.get(lastSelected.current)?.focus();
-          }, [selectedId]);
           const weixinEntry = {
             id: 'weixin', name: t('channels.weixin'),
             status: !weixin.transportError ? weixin.snapshot?.connectionStatus : null,
@@ -1274,29 +1370,46 @@ window.__ModuleLoader__.load({
           };
           const channels = [weixinEntry, ...(state.snapshot?.channels || []).filter(channel => channel.id !== 'weixin')];
           const selected = channels.find(channel => channel.id === selectedId);
+          const detailId = selected?.id;
+          React.useLayoutEffect(() => {
+            if (!page.current) return;
+            if (detailId) {
+              page.current.scrollTop = 0;
+              detailHeading.current?.focus({ preventScroll: true });
+            } else if (lastSelected.current) {
+              page.current.scrollTop = listScrollTop.current;
+              rows.current.get(lastSelected.current)?.focus({ preventScroll: true });
+            }
+          }, [detailId]);
           const available = state.snapshot && !state.transportError;
-          const outline = selected ? h('div', { className: 'wxb-actions' },
-            h(ActionButton, { label: t('channels.back'), onClick: () => setSelectedId(null) }))
-            : h(ActionButton, { label: t('actions.refresh'), busy: state.refreshing || weixin.refreshing,
-              busyLabel: t('actions.refreshing'), reason: !state.online ? t('disabled.offline') : null,
-              onClick: () => { void store.refresh(); void weixinStore.refresh(); } });
-          return h('div', { className: 'wxb-page' }, h('div', { className: 'wxb', 'aria-labelledby': 'wxb-main-title' },
+          return h('div', { className: 'wxb-page', ref: page }, h('div', { className: 'wxb', 'aria-labelledby': 'wxb-main-title' },
             h('style', null, CSS),
-            h('header', { className: 'wxb-head' },
-              h('div', null, h('h1', { id: 'wxb-main-title', ref: detailHeading, tabIndex: -1 }, t('channels.title'))),
-              outline),
-            state.transportError && selected?.id !== 'weixin'
+            selected ? h('button', {
+              type: 'button', className: 'wxb-crumb', 'aria-label': t('channels.back'),
+              onClick: () => setSelectedId(null),
+            }, h('svg', { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+              h('path', { d: 'm9 4.5-3.5 3.5L9 11.5', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' })),
+            t('channels.title')) : h('header', { className: 'wxb-head' },
+              h('div', null, h('h1', { id: 'wxb-main-title' }, t('channels.title'))),
+              h(ActionButton, { label: t('actions.refresh'), busy: state.refreshing || weixin.refreshing,
+                busyLabel: t('actions.refreshing'), reason: !state.online ? t('disabled.offline') : null,
+                onClick: () => { void store.refresh(); void weixinStore.refresh(); } })),
+            !selected && state.transportError
               ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
-            selected?.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin })
-              : selected ? h(ChannelDetail, { key: selected.id, channel: selected, store, state })
+            selected?.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin, headingRef: detailHeading })
+              : selected ? h(ChannelDetail, { key: selected.id, channel: selected, store, state, headingRef: detailHeading })
                 : h('ul', { className: 'wxb-list' }, channels.map(channel => {
                   const status = channel.id === 'weixin' ? channel.status : available ? channel.status : null;
                   const isLoading = channel.id === 'weixin' ? weixin.initialLoading : state.initialLoading;
                   return h('li', { key: channel.id }, h('button', { className: 'wxb-row', type: 'button',
                     ref: element => { if (element) rows.current.set(channel.id, element); else rows.current.delete(channel.id); },
-                    onClick: () => { lastSelected.current = channel.id; setSelectedId(channel.id); },
+                    onClick: () => {
+                      listScrollTop.current = page.current?.scrollTop ?? 0;
+                      lastSelected.current = channel.id;
+                      setSelectedId(channel.id);
+                    },
                   },
-                  h('span', null, channel.name),
+                  h('span', { className: 'wxb-channel-label' }, h(ChannelIcon, { id: channel.id }), h('span', null, channel.name)),
                   h('span', { className: 'wxb-status' }, h(StatusDot, { status: status || 'disconnected' }),
                     t(status ? `status.${status}` : isLoading ? 'status.loading' : 'status.unavailable')),
                   status ? h('span', { className: 'wxb-muted' },

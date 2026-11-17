@@ -145,7 +145,7 @@
     "notice.revoked": "已撤销授权，DSH 会话历史已保留。",
     "channels.title": "消息渠道",
     "channels.weixin": "微信",
-    "channels.back": "所有渠道",
+    "channels.back": "返回消息渠道",
     "channels.configured": "已配置",
     "channels.unconfigured": "未配置",
     "channels.pendingVerification": "待账号验证",

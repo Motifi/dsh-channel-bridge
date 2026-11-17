@@ -145,7 +145,7 @@
     "notice.revoked": "Access revoked. DSH conversation history was kept.",
     "channels.title": "Message channels",
     "channels.weixin": "WeChat",
-    "channels.back": "All channels",
+    "channels.back": "Back to message channels",
     "channels.configured": "Configured",
     "channels.unconfigured": "Not configured",
     "channels.pendingVerification": "Pending account verification",

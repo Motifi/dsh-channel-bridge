@@ -1,5 +1,5 @@
 - insert:
-    - id: preset-weixin-bridge-chat
+    - id: preset-dsh-channel-bridge-weixin-chat
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: weixin-bridge-chat
