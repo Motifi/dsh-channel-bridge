@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialProjection, applyProjection, completionOf, contentFingerprint } from '../lib/projection.js';
 import { hash, MAX_REPLY_CHARS, PRESET_ID } from '../lib/state.js';
+import { projectionSchema } from '../lib/schemas.js';
 
 // Fixtures follow the installed DSH 0.2.2-rc.3 public SessionEvent/Inbox
 // vocabulary. They do not import the runtime, mount a profile, or call a model.
@@ -69,6 +70,16 @@ test('events from unrelated sessions are complete no-ops for an ineligible cell'
     assert.equal(applyProjection(state, input), state);
   }
   assert.equal(completionOf(state, user().id), undefined);
+});
+
+test('channel and WeChat message identifiers cannot be used across session namespaces', () => {
+  const channel = initialProjection({ id: `dshbridge-${'a'.repeat(32)}` });
+  const channelMessage = { ...user(), id: `dshbridge-in-${'a'.repeat(48)}` };
+  const accepted = fold(channel, splice([channelMessage]));
+  const checkpoint = projectionSchema.parse(JSON.parse(JSON.stringify(accepted)));
+  assert.equal(completionOf(checkpoint, channelMessage.id).state, 'queued');
+  assert.equal(fold(accepted, splice([user()])).contaminated, true);
+  assert.equal(fold(initialProjection(header), splice([channelMessage])).contaminated, true);
 });
 
 test('folds are immutable and unrelated event types preserve reference identity', () => {

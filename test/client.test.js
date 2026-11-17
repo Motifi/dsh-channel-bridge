@@ -10,6 +10,7 @@ const end = source.indexOf('// END CLIENT CORE');
 assert.ok(start >= 0 && end > start, 'testable pure core markers exist');
 const coreProgram = `${source.slice(start, end)}\n({
   safeQrSource, liveLogin, deriveLoginView, deriveFeedback, pairingBlock, validSnapshot, bridgeError, errorKey, createApi, createController,
+  createChannelApi, parseChannelConfig,
 });`;
 const core = vm.runInNewContext(coreProgram, { AbortController, setTimeout, clearTimeout, Date });
 
@@ -95,8 +96,89 @@ test('browser artifact is a lazy factory with React as its only runtime import',
   assert.doesNotMatch(source, /window\.confirm|dangerouslySetInnerHTML|createPortal|document\.body|localStorage|sessionStorage/);
   assert.doesNotMatch(source, /<iframe|<script|https?:\/\//);
   assert.match(source, /inject: \['slots', 'locale'\]/);
-  assert.match(source, /id: 'weixin-bridge', order: 25, label: \(\) => t\('title'\)/);
-  assert.match(source, /ctx\.slots\.inject\('settings\.section\.icon'/);
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'));
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'));
+});
+
+test('client contributes a single page after Automation tasks through the official navigation slots', () => {
+  let registration;
+  vm.runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value; } } } });
+  const module = registration.factory(() => ({ createElement() {} }));
+  const slots = new Map();
+  module.apply({
+    effect: effect => effect(),
+    locale: { register() {}, bind: () => key => key },
+    slots: {
+      inject(name, register) {
+        const before = slots.size;
+        register();
+        assert.equal(slots.size, before + 1);
+        assert.equal(slots.get(name).name, name);
+      },
+      register(options, component) {
+        slots.set(options.name, options);
+        assert.equal(typeof component, 'function');
+      },
+    },
+  });
+  assert.deepEqual([...slots.keys()], ['main', 'sidebar.panellist']);
+  assert.equal(slots.get('main').key, slots.get('sidebar.panellist').id);
+  assert.equal(slots.get('sidebar.panellist').order, 20);
+  assert.equal(slots.get('sidebar.panellist').label(), 'channels.title');
+});
+
+test('channel controller aborts its owner request and cancels every timer on unmount', async () => {
+  const clock = fakeClock();
+  const { api, requests } = queueApi();
+  const store = core.createController(api, { clock });
+  const start = store.start();
+  store.stop();
+  assert.equal(requests[0].signal.aborted, true);
+  assert.equal(await start, false);
+  assert.deepEqual(clock.jobs, []);
+  requests[0].resolve({ channels: [] });
+  await flush();
+  assert.equal(store.getSnapshot().snapshot, null);
+});
+
+test('channel request sends write-only configuration and validates the status envelope', async () => {
+  const channel = {
+    id: 'telegram', name: 'Telegram', status: 'paused', configured: true, enabled: false,
+    allowedSenders: ['123'], accountVerification: 'pending',
+  };
+  const api = core.createChannelApi(async (url, init) => {
+    assert.equal(url, '/plugins/channel-bridge/api');
+    assert.equal(init.credentials, 'same-origin');
+    assert.equal(init.cache, 'no-store');
+    assert.equal(init.headers['X-DSH-Channel-Bridge'], '1');
+    assert.deepEqual(JSON.parse(init.body), { action: 'configure', id: 'telegram', config: { token: 'fake' } });
+    return { ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [channel] } }) };
+  });
+  const value = await api('configure', { id: 'telegram', config: { token: 'fake' } }, new AbortController().signal);
+  assert.deepEqual(value.channels, [channel]);
+  const malformed = core.createChannelApi(async () => ({
+    ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [{ ...channel, status: 'unknown' }] } }),
+  }));
+  await assert.rejects(malformed('status', {}, new AbortController().signal), error => error.bridgeKind === 'response');
+});
+
+test('catalog fields produce typed nested configuration and omit untouched defaults', () => {
+  const fields = [
+    { field: 'credentials.token', kind: 'secret', required: true },
+    { field: 'replyInThread', kind: 'bool' },
+    { field: 'options.tags', kind: 'list' },
+    { field: 'port', kind: 'int' },
+    { field: 'host', kind: 'string' },
+  ];
+  const config = core.parseChannelConfig(fields, {
+    'credentials.token': 'fake', replyInThread: 'false', 'options.tags': 'alpha\nbeta', port: '1234',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(config)), {
+    credentials: { token: 'fake' }, replyInThread: false, options: { tags: ['alpha', 'beta'] }, port: 1234,
+  });
+  assert.throws(() => core.parseChannelConfig(fields, { port: '1234' }), /required/);
+  assert.throws(() => core.parseChannelConfig([{ field: '__proto__.polluted', kind: 'string' }], { '__proto__.polluted': 'x' }), /field/);
+  assert.throws(() => core.parseChannelConfig(fields, { 'credentials.token': 'fake', port: '3.5' }), /number/);
 });
 
 test('locale resources and embedded runtime dictionaries remain identical', async () => {

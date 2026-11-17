@@ -4,15 +4,16 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'weixinBridge';
+    const PANEL_ID = 'dsh-channel-bridge';
 
     // BEGIN LOCALE DATA
     const MESSAGES = {
       "en": {
         "title": "WeChat bridge",
         "intro": "Connect your personal WeChat to a private, persistent DSH conversation.",
-        "limits.title": "First-release boundaries",
+        "limits.title": "WeChat support",
         "limits.chat": "WeChat conversations are chat-only with all tools, including local tools, disabled. DSH must remain running; sleep or exit interrupts the connection.",
-        "limits.media": "Private text messages only. Images, voice, files, group chats, and unsolicited broadcasts are not supported.",
+        "limits.media": "Private chats support text and inbound attachments up to 1 MiB each. Replies are text. Group chats and unsolicited broadcasts are not supported.",
         "limits.owner": "Only the DSH owner can scan, resume, or manually approve access. WeChat messages and agent tools cannot grant permission.",
         "steps.title": "Connect in four steps",
         "steps.scan": "Scan the QR code and confirm sign-in in WeChat.",
@@ -146,14 +147,49 @@ window.__ModuleLoader__.load({
         "notice.resumed": "Connection resumed. Check the connection status above.",
         "notice.disconnected": "Disconnected. Saved credentials and approvals were cleared; DSH history was kept.",
         "notice.approved": "Approved. Send another text in WeChat to start your conversation.",
-        "notice.revoked": "Access revoked. DSH conversation history was kept."
+        "notice.revoked": "Access revoked. DSH conversation history was kept.",
+        "channels.title": "Message channels",
+        "channels.weixin": "WeChat",
+        "channels.back": "All channels",
+        "channels.configured": "Configured",
+        "channels.unconfigured": "Not configured",
+        "channels.pendingVerification": "Pending account verification",
+        "channels.configuration": "Configuration",
+        "channels.configHint": "Saving replaces the channel configuration and pauses receiving. Enter the required values again when changing it. Stored credentials stay hidden.",
+        "channels.configJson": "Configuration JSON",
+        "channels.useJson": "Use JSON",
+        "channels.useFields": "Use configuration fields",
+        "channels.configInvalid": "Enter valid values for the configuration fields or paste a JSON object.",
+        "channels.configSaved": "Configuration saved.",
+        "channels.configJsonRequired": "Enter a JSON object.",
+        "channels.saveConfig": "Save configuration",
+        "channels.yes": "Yes",
+        "channels.no": "No",
+        "channels.useDefault": "Use default",
+        "channels.access": "Access",
+        "channels.allowedSenders": "Allowed sender IDs",
+        "channels.allowedHint": "Enter one platform sender ID per line. An empty list blocks all senders.",
+        "channels.wildcard": "Enter individual sender IDs. The wildcard * is unavailable.",
+        "channels.accessSaved": "Access saved.",
+        "channels.saveAccess": "Save access",
+        "channels.accessNeedsChange": "Enter a change to the allowed sender IDs.",
+        "channels.connect": "Connect",
+        "channels.login": "Sign in",
+        "channels.qrAlt": "Channel QR code. Scan it with the messaging app.",
+        "channels.openAuthorization": "Authorize with Linear",
+        "channels.platformDocs": "Platform documentation",
+        "channels.disconnectHint": "Disconnect and remove the credentials and allowed senders for this channel? DSH conversation history is kept.",
+        "channels.runtimeError": "The channel reported an error.",
+        "channels.uncertain": "Delivery could not be confirmed for {count} replies. Check the DSH conversation before resending.",
+        "channels.configBeforeAccess": "Save the channel configuration first.",
+        "channels.accessBeforeConnect": "Add an allowed sender before connecting."
       },
       "zh": {
         "title": "微信连接",
         "intro": "将个人微信连接到独立、持久的 DSH 私人会话。",
-        "limits.title": "首版功能边界",
+        "limits.title": "微信支持范围",
         "limits.chat": "微信会话仅聊天，禁用所有工具（包括本地工具）；DSH 必须持续运行，休眠或退出会中断连接。",
-        "limits.media": "仅支持个人私聊的文本收发，不支持图片、语音、文件、群聊或主动群发。",
+        "limits.media": "个人私聊支持文本与单个不超过 1 MiB 的入站附件，回复为文本。暂不支持群聊和主动群发。",
         "limits.owner": "只有 DSH 所有者可以扫码、恢复连接或手动批准；微信消息和 Agent 工具均不能授予权限。",
         "steps.title": "四步开始使用",
         "steps.scan": "用微信扫码，并在微信中确认登录。",
@@ -287,7 +323,42 @@ window.__ModuleLoader__.load({
         "notice.resumed": "已请求恢复连接，请查看上方连接状态。",
         "notice.disconnected": "已断开连接并清除保存的凭据和批准记录；DSH 历史已保留。",
         "notice.approved": "已批准。请在微信再发一条文本，开启您的会话。",
-        "notice.revoked": "已撤销授权，DSH 会话历史已保留。"
+        "notice.revoked": "已撤销授权，DSH 会话历史已保留。",
+        "channels.title": "消息渠道",
+        "channels.weixin": "微信",
+        "channels.back": "所有渠道",
+        "channels.configured": "已配置",
+        "channels.unconfigured": "未配置",
+        "channels.pendingVerification": "待账号验证",
+        "channels.configuration": "渠道配置",
+        "channels.configHint": "保存会替换渠道配置并暂停接收。修改时请重新填写必需字段。已保存的凭据不会显示。",
+        "channels.configJson": "渠道配置 JSON",
+        "channels.useJson": "使用 JSON",
+        "channels.useFields": "使用配置字段",
+        "channels.configInvalid": "请输入有效的配置字段，或粘贴有效的 JSON 对象。",
+        "channels.configSaved": "已保存配置。",
+        "channels.configJsonRequired": "请输入 JSON 对象。",
+        "channels.saveConfig": "保存配置",
+        "channels.yes": "是",
+        "channels.no": "否",
+        "channels.useDefault": "使用默认值",
+        "channels.access": "访问权限",
+        "channels.allowedSenders": "允许的发送者 ID",
+        "channels.allowedHint": "每行填写一个平台发送者 ID。留空会拒绝所有发送者。",
+        "channels.wildcard": "请逐一填写发送者 ID。不能使用通配符 *。",
+        "channels.accessSaved": "已保存访问权限。",
+        "channels.saveAccess": "保存访问权限",
+        "channels.accessNeedsChange": "请修改允许的发送者 ID 后保存。",
+        "channels.connect": "连接",
+        "channels.login": "登录",
+        "channels.qrAlt": "渠道登录二维码，请使用对应的聊天应用扫码。",
+        "channels.openAuthorization": "前往 Linear 授权",
+        "channels.platformDocs": "平台文档",
+        "channels.disconnectHint": "断开这个渠道并清除其凭据和允许的发送者？DSH 会话历史会保留。",
+        "channels.runtimeError": "渠道报告异常。",
+        "channels.uncertain": "有 {count} 条回复的送达情况无法确认。重新发送前，请先查看 DSH 会话。",
+        "channels.configBeforeAccess": "请先保存渠道配置。",
+        "channels.accessBeforeConnect": "请先添加允许的发送者。"
       }
     };
     // END LOCALE DATA
@@ -295,7 +366,7 @@ window.__ModuleLoader__.load({
     // BEGIN CLIENT CORE — pure transport/state helpers, tested without React or a DOM.
     const CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'paused', 'auth-required', 'error']);
     const ACTIVE_LOGIN_STATES = new Set(['waiting', 'scanned', 'verify-code']);
-    const MUTATIONS = new Set(['login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
+    const MUTATIONS = new Set(['configure', 'login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
     const NOTICE_KEYS = {
       'login.start': 'notice.loginStarted', 'login.verify': 'notice.loginVerified',
       'login.cancel': 'notice.loginCancelled', 'connection.pause': 'notice.paused',
@@ -408,13 +479,13 @@ window.__ModuleLoader__.load({
       return 'errors.failed';
     }
 
-    function createApi(fetchImpl) {
+    function createOwnerApi(fetchImpl, path, header, validate) {
       return async function request(action, payload, signal) {
         let response;
         try {
-          response = await fetchImpl('/plugins/weixin-bridge/api', {
+          response = await fetchImpl(path, {
             method: 'POST', credentials: 'same-origin', cache: 'no-store',
-            headers: { 'Content-Type': 'application/json', 'X-DSH-Weixin-Bridge': '1' },
+            headers: { 'Content-Type': 'application/json', [header]: '1' },
             body: JSON.stringify({ ...payload, action }), signal,
           });
         } catch (error) {
@@ -429,9 +500,73 @@ window.__ModuleLoader__.load({
           throw bridgeError('host', response.status,
             body && body.error && typeof body.error.code === 'string' ? body.error.code : '');
         }
-        if (!validSnapshot(body.value)) throw bridgeError('response', response.status);
+        if (!validate(body.value)) throw bridgeError('response', response.status);
         return body.value;
       };
+    }
+
+    function createApi(fetchImpl) {
+      return createOwnerApi(fetchImpl, '/plugins/weixin-bridge/api', 'X-DSH-Weixin-Bridge', validSnapshot);
+    }
+
+    function validChannelSnapshot(value) {
+      return Boolean(value && Array.isArray(value.channels)
+        && value.channels.every(channel => channel && typeof channel.id === 'string'
+          && /^[a-z][a-z0-9_-]{0,63}$/.test(channel.id) && typeof channel.name === 'string'
+          && CONNECTION_STATES.has(channel.status) && typeof channel.configured === 'boolean'
+          && typeof channel.enabled === 'boolean' && Array.isArray(channel.allowedSenders)
+          && channel.allowedSenders.every(sender => typeof sender === 'string'))
+        && new Set(value.channels.map(channel => channel.id)).size === value.channels.length);
+    }
+
+    function createChannelApi(fetchImpl) {
+      return createOwnerApi(fetchImpl, '/plugins/channel-bridge/api', 'X-DSH-Channel-Bridge', validChannelSnapshot);
+    }
+
+    function writeChannelField(config, name, value) {
+      const segments = name.split('.');
+      if (segments.some(part => !/^[A-Za-z][A-Za-z0-9_-]*$/.test(part)
+        || part === 'constructor' || part === 'prototype')) throw new TypeError('field');
+      const key = segments.pop();
+      let parent = config;
+      for (const part of segments) {
+        if (!Object.hasOwn(parent, part)) parent[part] = {};
+        if (!parent[part] || typeof parent[part] !== 'object' || Array.isArray(parent[part])) {
+          throw new TypeError('field');
+        }
+        parent = parent[part];
+      }
+      if (Object.hasOwn(parent, key)) throw new TypeError('field');
+      parent[key] = value;
+    }
+
+    function parseChannelConfig(fields, values) {
+      const config = {};
+      for (const { field, kind, required, choices } of fields) {
+        const input = String(Object.hasOwn(values, field) ? values[field] : '').trim();
+        if (!input) {
+          if (required) throw new TypeError('required');
+          continue;
+        }
+        let value = input;
+        if (kind === 'bool') {
+          if (input !== 'true' && input !== 'false') throw new TypeError('boolean');
+          value = input === 'true';
+        } else if (kind === 'int' || kind === 'float') {
+          value = Number(input);
+          if (!Number.isFinite(value) || (kind === 'int' && !Number.isSafeInteger(value))) {
+            throw new TypeError('number');
+          }
+        } else if (kind === 'list') {
+          value = input.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+        } else if (kind === 'json') {
+          value = JSON.parse(input);
+        } else if (kind === 'enum' && !choices?.includes(input)) {
+          throw new TypeError('choice');
+        }
+        writeChannelField(config, field, value);
+      }
+      return config;
     }
 
     function createController(api, options) {
@@ -512,6 +647,7 @@ window.__ModuleLoader__.load({
           const key = request.timedOut ? 'errors.timeout' : !state.online ? 'errors.offline'
             : request.offlineAbort ? 'errors.network' : errorKey(error);
           const failure = { key, action, userId: payload.userId || null };
+          if (payload.id) failure.channelId = payload.id;
           if (action === 'status') failures += 1;
           patch({
             initialLoading: false,
@@ -577,8 +713,17 @@ window.__ModuleLoader__.load({
 .wxb-status{display:inline-flex;align-items:center;gap:8px;min-width:0}.wxb-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--dsw-alias-state-idle-primary)}.wxb-dot[data-status=connected],.wxb-dot[data-status=approved]{background:var(--dsw-alias-state-success-primary)}.wxb-dot[data-status=connecting],.wxb-dot[data-status=paused],.wxb-dot[data-status=pending],.wxb-dot[data-status=auth-required]{background:var(--dsw-alias-state-warn-primary)}.wxb-dot[data-status=error]{background:var(--dsw-alias-state-error-primary)}
 .wxb-qrrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px}.wxb-qr{width:200px;height:200px;max-width:100%;object-fit:contain;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}.wxb-qrtext{flex:1;min-width:min(220px,100%);display:flex;flex-direction:column;gap:10px}.wxb-user{display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px 0;border-top:.5px solid var(--dsw-alias-border-l2)}.wxb-user:first-child{padding-top:0;border-top:0}.wxb-userid{font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:text}
 .wxb-details{display:grid;grid-template-columns:minmax(110px,160px) minmax(0,1fr);gap:8px 16px;font-size:13px;line-height:20px}.wxb-details dt{color:var(--dsw-alias-label-secondary)}.wxb-details dd{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text}.wxb-code{font:inherit;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.wxb-session{display:block;max-width:100%;padding:4px 0;border-radius:3px;font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:all}.wxb-confirm{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wxb-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}.wxb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.wxb-page{height:100%;min-height:0;min-width:0;overflow:auto;padding:24px clamp(16px,5vw,56px);background:var(--dsw-alias-bg-base)}
+.wxb-page>.wxb{max-width:960px;margin-inline:auto}.wxb-page h1{font-size:26px;line-height:34px;font-weight:550;margin:0}
+.wxb-list{list-style:none;padding:0;margin:18px 0 0;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;overflow:hidden}
+.wxb-list>li+li{border-top:1px solid var(--dsw-alias-border-l2)}
+.wxb-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,auto) auto;gap:12px;align-items:center;text-align:start;min-height:48px;width:100%;padding:8px 14px;border:0;background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit;cursor:pointer}
+.wxb-row:hover,.wxb-row:focus-visible{background:var(--dsw-alias-bg-layer-2)}.wxb-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.wxb-subhead{margin-block:16px 2px}.wxb-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px}
+.wxb-field .wxb-channel-input{width:100%}.wxb-field textarea.wxb-channel-input{height:auto;min-height:72px;resize:vertical}
+.wxb-link{color:var(--dsw-alias-brand-primary)}
 @media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}}
-@media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}}
+@media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}.wxb-row{grid-template-columns:minmax(0,1fr) auto}}
 @media(pointer:coarse){.wxb-input{font-size:16px}.wxb-button{min-height:40px}}
 `;
 
@@ -596,6 +741,26 @@ window.__ModuleLoader__.load({
 
     function StatusDot({ status }) {
       return h('span', { className: 'wxb-dot', 'data-status': status, 'aria-hidden': true });
+    }
+
+    function useBridgeController(apiFactory) {
+      const store = React.useMemo(() => createController(apiFactory((...args) => window.fetch(...args)), {
+        online: typeof navigator === 'undefined' || navigator.onLine !== false,
+      }), [apiFactory]);
+      const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+      React.useEffect(() => {
+        const online = () => { store.setOnline(true); };
+        const offline = () => { store.setOnline(false); };
+        window.addEventListener('online', online);
+        window.addEventListener('offline', offline);
+        void store.start();
+        return () => {
+          window.removeEventListener('online', online);
+          window.removeEventListener('offline', offline);
+          store.stop();
+        };
+      }, [store]);
+      return [store, state];
     }
 
     function ConfirmControl({ t, action, busyKey, state, reason, titleKey, bodyKey, buttonKey, confirmKey, payload, store, onConfirmed }) {
@@ -791,12 +956,7 @@ window.__ModuleLoader__.load({
               : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
         }
 
-        function BridgeSettings() {
-          const locale = React.useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
-          const store = React.useMemo(() => createController(createApi((...args) => window.fetch(...args)), {
-            online: typeof navigator === 'undefined' || navigator.onLine !== false,
-          }), []);
-          const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+        function WeChatChannel({ locale, store, state }) {
           const [clockTick, setClockTick] = React.useState(() => Date.now());
           const now = Math.max(clockTick, Date.now());
           const snapshot = state.snapshot;
@@ -810,18 +970,6 @@ window.__ModuleLoader__.load({
             // Runs after the parent commit, even when a successful disconnect/revoke removed its trigger.
             if (confirmationFocusRequest > 0) usersHeadingRef.current?.focus();
           }, [confirmationFocusRequest]);
-          React.useEffect(() => {
-            store.start();
-            const online = () => { store.setOnline(true); };
-            const offline = () => { store.setOnline(false); };
-            window.addEventListener('online', online);
-            window.addEventListener('offline', offline);
-            return () => {
-              window.removeEventListener('online', online);
-              window.removeEventListener('offline', offline);
-              store.stop();
-            };
-          }, [store]);
           const expirations = snapshot ? [
             ...(liveLogin(snapshot, now) ? [snapshot.login.expiresAt] : []),
             ...snapshot.users.filter(user => user.status === 'pending' && Number.isFinite(user.pairingExpiresAt)
@@ -854,9 +1002,8 @@ window.__ModuleLoader__.load({
           const canResume = Boolean(snapshot && snapshot.account && connectionStatus !== 'auth-required'
             && (connectionStatus === 'paused' || connectionStatus === 'error' || !snapshot.enabled));
           const canPause = Boolean(snapshot && snapshot.account && !canResume && connectionStatus !== 'auth-required');
-          return h('div', { className: 'wxb' },
-            h('style', null, CSS),
-            h('header', { className: 'wxb-head' },
+          return h(React.Fragment, null,
+            h('header', { className: 'wxb-head wxb-subhead' },
               h('div', null, h('h2', null, t('title')), h('p', { className: 'wxb-intro' }, t('intro'))),
               h(ActionButton, { label: t('actions.refresh'), reason: refreshReason,
                 busy: state.refreshing, busyLabel: t('actions.refreshing'), onClick: () => { void store.refresh(); } })),
@@ -921,11 +1068,247 @@ window.__ModuleLoader__.load({
               h('p', { className: 'wxb-muted' }, t('details.localTime'))) : null);
         }
 
-        ctx.slots.inject('settings.section', () => ctx.slots.register({
-          name: 'settings.section', id: 'weixin-bridge', order: 25, label: () => t('title'),
-        }, BridgeSettings));
-        ctx.slots.inject('settings.section.icon', () => ctx.slots.register({
-          name: 'settings.section.icon', id: 'weixin-bridge',
+        function linkTarget(value, authorization = false) {
+          try {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.username || url.password) return null;
+            if (authorization && (url.host !== 'linear.app' || url.pathname !== '/oauth/authorize')) return null;
+            return url.href;
+          } catch (_) { return null; }
+        }
+
+        function ChannelField({ field, value, update, disabled }) {
+          const id = React.useId();
+          const type = field.kind;
+          const props = {
+            id, value, className: 'wxb-input wxb-channel-input', disabled,
+            required: Boolean(field.required), autoComplete: 'off',
+            onChange: event => update(event.target.value),
+          };
+          const defaultChoice = Object.hasOwn(field, 'default_value') ? field.default_value : '';
+          let control;
+          if (type === 'bool' || type === 'enum') {
+            const choices = type === 'bool' ? [['true', t('channels.yes')], ['false', t('channels.no')]]
+              : (field.choices || []).map(choice => [choice, choice]);
+            control = h('select', props,
+              h('option', { value: '' }, defaultChoice || t('channels.useDefault')),
+              ...choices.map(([key, label]) => h('option', { key, value: key }, label)));
+          } else if (type === 'list') {
+            control = h('textarea', { ...props, placeholder: defaultChoice, rows: 2, spellCheck: false });
+          } else {
+            // JSON may contain credentials (for example a per-client token map).
+            const secret = type === 'secret' || type === 'json';
+            control = h('input', {
+              ...props, type: secret ? 'password' : 'text', spellCheck: false,
+              inputMode: ['int', 'float'].includes(type) ? 'decimal' : undefined,
+              placeholder: secret ? undefined : defaultChoice,
+            });
+          }
+          return h('div', { className: 'wxb-field' },
+            h('label', { htmlFor: id }, field.field),
+            control);
+        }
+
+        function ChannelConfiguration({ channel, store, state, reason }) {
+          const [values, setValues] = React.useState({});
+          const [raw, setRaw] = React.useState('');
+          const [advanced, setAdvanced] = React.useState(false);
+          const [invalid, setInvalid] = React.useState(false);
+          const [saved, setSaved] = React.useState(false);
+          const configId = React.useId();
+          const fields = (Array.isArray(channel.fields) ? channel.fields : [])
+            .filter(field => field && typeof field.field === 'string'
+              && !['allowFrom', 'allow_from', 'enabled'].includes(field.field));
+          const useJson = advanced || fields.length === 0;
+          const canSave = !useJson || Boolean(raw.trim());
+          async function submit(event) {
+            event.preventDefault();
+            setSaved(false);
+            let config;
+            try {
+              config = useJson ? JSON.parse(raw) : parseChannelConfig(fields, values);
+              if (!config || typeof config !== 'object' || Array.isArray(config)) throw new TypeError('config');
+            } catch (_) {
+              setInvalid(true);
+              return;
+            }
+            setInvalid(false);
+            if (await store.run('configure', { id: channel.id, config })) {
+              setValues({});
+              setRaw('');
+              setSaved(true);
+            }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('channels.configuration')),
+            h('p', { className: 'wxb-muted' }, t('channels.configHint')),
+            h('form', { className: 'wxb-stack', onSubmit: submit, autoComplete: 'off' },
+              useJson ? h('div', { className: 'wxb-field' },
+                h('label', { htmlFor: configId }, t('channels.configJson')),
+                h('input', { className: 'wxb-input wxb-channel-input', id: configId, type: 'password', value: raw,
+                  onChange: event => { setRaw(event.target.value); setSaved(false); },
+                  disabled: Boolean(reason), spellCheck: false, autoComplete: 'off', autoCapitalize: 'off',
+                  placeholder: '{}', required: true }))
+                : h('div', { className: 'wxb-form' }, fields.map(field => h(ChannelField, {
+                  key: field.field, field, value: Object.hasOwn(values, field.field) ? values[field.field] : '',
+                  update: value => { setValues(previous => ({ ...previous, [field.field]: value })); setSaved(false); },
+                  disabled: Boolean(reason),
+                }))),
+              invalid ? h('p', { className: 'wxb-error', role: 'alert' }, t('channels.configInvalid')) : null,
+              saved ? h('p', { className: 'wxb-muted', role: 'status' }, t('channels.configSaved')) : null,
+              h('div', { className: 'wxb-actions' },
+                h(ActionButton, { type: 'submit', label: t('channels.saveConfig'), variant: 'primary',
+                  reason: reason || (!canSave ? t('channels.configJsonRequired') : null), busy: state.busy === 'configure' }),
+                fields.length > 0 ? h(ActionButton, {
+                  label: t(advanced ? 'channels.useFields' : 'channels.useJson'), reason,
+                  onClick: () => { setAdvanced(value => !value); setInvalid(false); setSaved(false); setRaw(''); setValues({}); },
+                }) : null)));
+        }
+
+        function ChannelPermissions({ channel, store, state, reason }) {
+          const id = React.useId();
+          const [draft, setDraft] = React.useState(null);
+          const [saved, setSaved] = React.useState(false);
+          const savedSenders = channel.allowedSenders.join('\n');
+          const value = draft ?? savedSenders;
+          const senders = [...new Set(value.split('\n').map(sender => sender.trim()).filter(Boolean))];
+          const changed = senders.join('\n') !== savedSenders;
+          const hasWildcard = senders.includes('*');
+          const accessReason = reason || (!channel.configured ? t('channels.configBeforeAccess') : null);
+          async function submit(event) {
+            event.preventDefault();
+            if (!changed || hasWildcard) return;
+            if (await store.run('configure', { id: channel.id, allowedSenders: senders })) {
+              setDraft(null);
+              setSaved(true);
+            }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('channels.access')),
+            h('form', { className: 'wxb-stack', onSubmit: submit },
+              h('div', { className: 'wxb-field' },
+                h('label', { htmlFor: id }, t('channels.allowedSenders')),
+                h('textarea', { className: 'wxb-input wxb-channel-input', id, rows: 3, value,
+                  onChange: event => { setDraft(event.target.value); setSaved(false); },
+                  disabled: Boolean(accessReason), spellCheck: false, autoComplete: 'off', autoCapitalize: 'off' }),
+                h('p', { className: 'wxb-muted' }, t('channels.allowedHint'))),
+              hasWildcard ? h('p', { className: 'wxb-error', role: 'alert' }, t('channels.wildcard')) : null,
+              saved ? h('p', { className: 'wxb-muted', role: 'status' }, t('channels.accessSaved')) : null,
+              h('div', { className: 'wxb-actions' },
+                h(ActionButton, { type: 'submit', label: t('channels.saveAccess'),
+                  reason: accessReason || (!changed || hasWildcard ? t('channels.accessNeedsChange') : null),
+                  busy: state.busy === 'configure' }))));
+        }
+
+        function ChannelDetail({ channel, store, state }) {
+          const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+          const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
+            : state.permission ? t(state.permission) : state.transportError || state.uncertain ? t('disabled.stale') : null;
+          const payload = { id: channel.id };
+          const canPause = channel.enabled && ['connecting', 'connected'].includes(channel.status);
+          const canResume = channel.configured && !canPause;
+          const canDisconnect = channel.configured || channel.enabled || channel.allowedSenders.length > 0;
+          const connectReason = reason || (!channel.allowedSenders.length ? t('channels.accessBeforeConnect') : null);
+          const authorizationUrl = !state.transportError ? linkTarget(channel.login?.authorizationUrl, true) : null;
+          const qrUrl = !state.transportError && safeQrSource(channel.login?.qrUrl) ? channel.login.qrUrl : null;
+          const officialUrl = linkTarget(channel.officialUrl);
+          return h(React.Fragment, null,
+            h('div', { className: 'wxb-head wxb-subhead' },
+              h('div', null,
+                h('h2', null, channel.name),
+                channel.accountVerification === 'pending' ? h('p', { className: 'wxb-muted' }, t('channels.pendingVerification')) : null),
+              officialUrl ? h('a', { className: 'wxb-link', href: officialUrl, target: '_blank', rel: 'noopener noreferrer' },
+                t('channels.platformDocs')) : null),
+            h('section', { className: 'wxb-section' },
+              h('div', { className: 'wxb-status', role: 'status' },
+                h(StatusDot, { status: state.transportError ? 'disconnected' : channel.status }),
+                state.transportError ? t('status.unavailable') : t(`status.${channel.status}`)),
+              channel.errorCode && !state.transportError ? h('p', { className: 'wxb-error', role: 'alert' },
+                t('channels.runtimeError'), ' ', /^[A-Z0-9_]{1,64}$/.test(channel.errorCode) ? h('code', null, channel.errorCode) : null) : null,
+              Number.isSafeInteger(channel.uncertainReplies) && channel.uncertainReplies > 0
+                ? h('p', { className: 'wxb-muted' }, t('channels.uncertain', { count: String(channel.uncertainReplies) })) : null,
+              state.actionError?.channelId === channel.id
+                ? h('p', { className: 'wxb-error', role: 'alert' }, t(state.actionError.key)) : null,
+              qrUrl ? h('img', { className: 'wxb-qr', src: qrUrl, alt: t('channels.qrAlt') }) : null,
+              authorizationUrl ? h('a', { className: 'wxb-link', href: authorizationUrl, target: '_blank',
+                rel: 'noopener noreferrer' }, t('channels.openAuthorization')) : null,
+              h('div', { className: 'wxb-actions' },
+                channel.interactiveLogin && channel.configured && channel.status !== 'connected' ? h(ActionButton, {
+                  label: t('channels.login'), reason: connectReason, busy: state.busy === 'login.start',
+                  onClick: () => { void store.run('login.start', payload); },
+                }) : null,
+                canResume ? h(ActionButton, { label: t('channels.connect'), reason: connectReason,
+                  busy: state.busy === 'connection.resume', onClick: () => { void store.run('connection.resume', payload); } }) : null,
+                canPause || qrUrl || authorizationUrl ? h(ActionButton, { label: t('actions.pause'), reason,
+                  busy: state.busy === 'connection.pause', onClick: () => { void store.run('connection.pause', payload); } }) : null,
+                canDisconnect && !confirmDisconnect ? h(ActionButton, { label: t('actions.disconnect'), reason, variant: 'danger',
+                  onClick: () => setConfirmDisconnect(true) }) : null),
+              confirmDisconnect ? h('div', { className: 'wxb-confirm' },
+                h('p', null, t('channels.disconnectHint')),
+                h('div', { className: 'wxb-actions' },
+                  h(ActionButton, { label: t('confirm.cancel'), onClick: () => setConfirmDisconnect(false) }),
+                  h(ActionButton, { label: t('confirm.disconnect'), variant: 'danger', reason,
+                    busy: state.busy === 'connection.disconnect', onClick: async () => {
+                      if (await store.run('connection.disconnect', payload)) setConfirmDisconnect(false);
+                    } }))) : null),
+            h(ChannelConfiguration, { channel, store, state, reason }),
+            h(ChannelPermissions, { channel, store, state, reason }));
+        }
+
+        function ChannelManager() {
+          const locale = React.useSyncExternalStore(subscribeLocale, localeSnapshot, localeSnapshot);
+          const [weixinStore, weixin] = useBridgeController(createApi);
+          const [store, state] = useBridgeController(createChannelApi);
+          const [selectedId, setSelectedId] = React.useState(null);
+          const detailHeading = React.useRef(null);
+          const lastSelected = React.useRef(null);
+          const rows = React.useRef(new Map());
+          React.useEffect(() => {
+            if (selectedId) detailHeading.current?.focus();
+            else if (lastSelected.current) rows.current.get(lastSelected.current)?.focus();
+          }, [selectedId]);
+          const weixinEntry = {
+            id: 'weixin', name: t('channels.weixin'),
+            status: !weixin.transportError ? weixin.snapshot?.connectionStatus : null,
+            configured: Boolean(weixin.snapshot?.account),
+          };
+          const channels = [weixinEntry, ...(state.snapshot?.channels || []).filter(channel => channel.id !== 'weixin')];
+          const selected = channels.find(channel => channel.id === selectedId);
+          const available = state.snapshot && !state.transportError;
+          const outline = selected ? h('div', { className: 'wxb-actions' },
+            h(ActionButton, { label: t('channels.back'), onClick: () => setSelectedId(null) }))
+            : h(ActionButton, { label: t('actions.refresh'), busy: state.refreshing || weixin.refreshing,
+              busyLabel: t('actions.refreshing'), reason: !state.online ? t('disabled.offline') : null,
+              onClick: () => { void store.refresh(); void weixinStore.refresh(); } });
+          return h('div', { className: 'wxb-page' }, h('div', { className: 'wxb', 'aria-labelledby': 'wxb-main-title' },
+            h('style', null, CSS),
+            h('header', { className: 'wxb-head' },
+              h('div', null, h('h1', { id: 'wxb-main-title', ref: detailHeading, tabIndex: -1 }, t('channels.title'))),
+              outline),
+            state.transportError && selected?.id !== 'weixin'
+              ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
+            selected?.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin })
+              : selected ? h(ChannelDetail, { key: selected.id, channel: selected, store, state })
+                : h('ul', { className: 'wxb-list' }, channels.map(channel => {
+                  const status = channel.id === 'weixin' ? channel.status : available ? channel.status : null;
+                  const isLoading = channel.id === 'weixin' ? weixin.initialLoading : state.initialLoading;
+                  return h('li', { key: channel.id }, h('button', { className: 'wxb-row', type: 'button',
+                    ref: element => { if (element) rows.current.set(channel.id, element); else rows.current.delete(channel.id); },
+                    onClick: () => { lastSelected.current = channel.id; setSelectedId(channel.id); },
+                  },
+                  h('span', null, channel.name),
+                  h('span', { className: 'wxb-status' }, h(StatusDot, { status: status || 'disconnected' }),
+                    t(status ? `status.${status}` : isLoading ? 'status.loading' : 'status.unavailable')),
+                  status ? h('span', { className: 'wxb-muted' },
+                    t(channel.configured ? 'channels.configured' : 'channels.unconfigured')) : null));
+                }))));
+        }
+
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main', key: PANEL_ID, locale: NS,
+        }, ChannelManager));
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('channels.title'),
         }, BridgeNavIcon));
       },
     };

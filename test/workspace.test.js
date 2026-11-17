@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, realpath, rm, lstat, writeFile, symlink } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { resolveWorkspaceDir } from '../lib/workspace.js';
+import { resolveWeixinWorkspace, resolveWorkspaceDir } from '../lib/workspace.js';
 
 async function ownedDirectory(t) {
   const parent = await realpath(tmpdir());
@@ -67,4 +67,30 @@ test('an invalid DSH fallback is rejected without using the process working dire
   for (const fallback of [undefined, null, 42, '', 'relative/path', '/bad\0path']) {
     await assert.rejects(resolveWorkspaceDir(undefined, fallback), /absolute default directory/);
   }
+});
+
+test('uses the persisted workspace of an approved legacy WeChat session when the desktop default changed', async t => {
+  const root = await ownedDirectory(t);
+  const previous = join(root, 'original-weixin-workspace');
+  await mkdir(previous);
+  const id = `wxbridge-${'a'.repeat(32)}`;
+  assert.equal(await resolveWeixinWorkspace(undefined, root, {
+    state: { users: [{ status: 'approved', sessionId: id }] },
+    sessionPersistence: { async stat(sessionId) {
+      assert.equal(sessionId, id);
+      return { header: { id, cwd: previous, agentPreset: 'weixin-bridge-chat' } };
+    } },
+  }), previous);
+  await assert.rejects(lstat(join(root, 'weixin-workspace')), { code: 'ENOENT' });
+});
+
+test('legacy workspace inference ignores revoked identities and sessions outside the bridge preset', async t => {
+  const root = await ownedDirectory(t);
+  const id = `wxbridge-${'b'.repeat(32)}`;
+  let lookups = 0;
+  assert.equal(await resolveWeixinWorkspace(undefined, root, {
+    state: { users: [{ status: 'revoked', sessionId: id }, { status: 'approved', sessionId: id }] },
+    sessionPersistence: { async stat() { lookups++; return { header: { id, cwd: root, agentPreset: 'standard' } }; } },
+  }), join(root, 'weixin-workspace'));
+  assert.equal(lookups, 1);
 });

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { createCipheriv } from 'node:crypto';
 import { getEventListeners } from 'node:events';
 import { inspect } from 'node:util';
 import test from 'node:test';
 import {
-  ILinkClient, ILinkError, validateBaseUrl, splitText, extractTextMessage,
+  ILinkClient, ILinkError, validateBaseUrl, splitText, extractTextMessage, extractMediaMessage,
 } from '../lib/ilink.js';
 
 const ORIGIN = 'https://ilinkai.weixin.qq.com';
@@ -694,4 +695,66 @@ test('extractTextMessage ignores inherited and accessor fields, including nested
 test('extractTextMessage does not impose the embedding plugin input-length policy', () => {
   const text = 'a😀'.repeat(10_000);
   assert.equal(extractTextMessage(inbound({ item_list: [{ type: 1, text_item: { text } }] })).text, text);
+});
+
+const CDN = 'https://novac2c.cdn.weixin.qq.com/c2c/download';
+const MEDIA_KEY = Buffer.alloc(16, 8);
+
+function imageItem(overrides = {}) {
+  return { type: 2, image_item: { aeskey: MEDIA_KEY.toString('hex'), media: {
+    encrypt_query_param: 'media-locator+unsafe%=', ...overrides,
+  } } };
+}
+
+function encryptedMedia(bytes) {
+  const cipher = createCipheriv('aes-128-ecb', MEDIA_KEY, null);
+  return Buffer.concat([cipher.update(bytes), cipher.final()]);
+}
+
+test('iLink recognizes quoted media while preserving the text identity and refusing group and bot envelopes', () => {
+  const raw = inbound({ message_id: undefined, item_list: [{
+    type: 1, text_item: { text: 'photo quote' }, ref_msg: { message_item: imageItem() },
+  }] });
+  const { media, ...envelope } = extractMediaMessage(raw);
+  assert.deepEqual(envelope, extractTextMessage(raw));
+  assert.equal(media.length, 1);
+  assert.equal(extractMediaMessage({ ...raw, from_user_id: 'group@chatroom' }), null);
+  assert.equal(extractMediaMessage({ ...raw, message_type: '2' }), null);
+  const voice = extractMediaMessage(inbound({ item_list: [{ type: 3, voice_item: { text: '转写文字' } }] }));
+  assert.equal(voice.text, '[voice] 转写文字');
+  assert.deepEqual(voice.media, []);
+});
+
+test('iLink downloads only from the pinned CDN without credentials and decrypts supported AES keys', async () => {
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const { client, calls } = fakeClient([new Response(encryptedMedia(png)), new Response(encryptedMedia(Buffer.from('notes')))], { token: TOKEN });
+  const media = extractMediaMessage(inbound({ item_list: [
+    imageItem({ full_url: 'https://localhost/private' }),
+    { type: 4, file_item: { file_name: '../notes.txt', media: {
+      full_url: CDN + '?opaque=attachment', aes_key: Buffer.from(MEDIA_KEY.toString('hex')).toString('base64'),
+    } } },
+  ] })).media;
+  assert.deepEqual(await client.downloadMedia(media), [
+    { name: 'image.png', kind: 'image', mediaType: 'image/png', data: png.toString('base64') },
+    { name: 'notes.txt', kind: 'file', mediaType: 'text/plain', data: Buffer.from('notes').toString('base64') },
+  ]);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(({ url, init, headers }) => url.origin === new URL(CDN).origin && init.redirect === 'manual' && !headers.has('authorization')));
+  assert.equal(calls[0].url.searchParams.get('encrypted_query_param'), 'media-locator+unsafe%=');
+});
+
+test('iLink media refuses redirects, large streams, and ciphertext with invalid AES padding', async () => {
+  const { client, calls } = fakeClient([
+    new Response('', { status: 302, headers: { location: 'http://localhost/private' } }),
+    new Response(Buffer.alloc(LIMIT + 17)),
+    new Response(Buffer.alloc(15)),
+  ]);
+  const message = extractMediaMessage(inbound({ item_list: [
+    imageItem({ full_url: CDN + '?redirect=1', encrypt_query_param: '' }),
+    imageItem(), imageItem({ encrypt_query_param: 'bad-padding' }),
+  ] }));
+  const media = await client.downloadMedia(message.media);
+  assert.equal(calls.length, 3);
+  assert.equal(media.length, 3);
+  assert.ok(media.every(attachment => !attachment.data));
 });

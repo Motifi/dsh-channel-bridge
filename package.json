@@ -1,11 +1,14 @@
 {
   "name": "@local/dsh-channel-bridge",
   "version": "0.1.0",
-  "description": "Multi-channel messaging bridge for DeepSeek Harness. Currently supports a manually approved, isolated, text-only WeChat iLink channel.",
+  "description": "Messaging integrations and channel management for isolated DeepSeek Harness chat sessions.",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=24", "dsh": ">=0.2.2-rc.3 <0.3.0" },
+  "engines": {
+    "node": ">=24",
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -15,20 +18,44 @@
     "./session-policy/locale/*.json": "./locale/*.json",
     "./session-policy/icon": "./icon.svg"
   },
-  "files": ["index.js", "session-policy.js", "client.js", "lib", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md", "LICENSE"],
+  "files": [
+    "index.js",
+    "session-policy.js",
+    "client.js",
+    "lib",
+    "transport/channels.json",
+    "transport/nanobot_worker.py",
+    "transport/install.py",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "docs/channels.md",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
     "qrcode": "^1.5.4",
+    "ws": "8.22.2",
     "zod": "^4.3.0"
   },
   "packageManager": "pnpm@11.28.5",
-  "scripts": { "test": "node --test test/*.test.js", "check": "node scripts/check.mjs" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check.mjs"
+  },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-locale"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale"
+      ]
     }
   }
 }

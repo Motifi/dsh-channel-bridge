@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { createApiHandler, validateRequest } from '../lib/http.js';
+import { createApiHandler, validateChannelRequest, validateRequest } from '../lib/http.js';
 
-function fixture({ admission, peerId = 'browser', method = 'POST', headers = {}, body = { action: 'status' }, fail } = {}) {
+function fixture({ admission, peerId = 'browser', method = 'POST', headers = {}, body = { action: 'status' }, fail, server } = {}) {
   const req = new PassThrough(); req.method = method;
   req.headers = { 'content-type': 'application/json', 'x-dsh-weixin-bridge': '1', ...headers };
   let ended; const response = new Promise(resolve => { ended = resolve; });
@@ -17,7 +17,7 @@ function fixture({ admission, peerId = 'browser', method = 'POST', headers = {},
     return admission || { peer: { id: peerId, principal: { kind: 'owner' } } };
   } };
   const bridge = { async action(...args) { calls.push(args); if (fail) throw fail; return { connectionStatus: 'disconnected' }; } };
-  const handler = createApiHandler({ connection, bridge });
+  const handler = createApiHandler({ connection, bridge, ...server });
   const task = handler(req, res);
   req.end(typeof body === 'string' ? body : JSON.stringify(body));
   return { task, response, calls, res };
@@ -64,4 +64,19 @@ test('unexpected errors never expose upstream tokens, payloads, or stack traces'
   const f = fixture({ fail: new Error('SECRET upstream body token=abcdef') }); await f.task;
   assert.equal(f.res.statusCode, 500); assert.equal(f.res.body.includes('SECRET'), false);
   assert.equal(f.res.body.includes('abcdef'), false); assert.equal(f.res.body.includes('stack'), false);
+});
+
+test('channel configuration and login use the owner browser and distinct same-origin header', async () => {
+  const server = { header: 'x-dsh-channel-bridge', validate: validateChannelRequest };
+  const body = { action: 'configure', id: 'telegram', config: { token: 'fake' } };
+  const headers = { 'x-dsh-channel-bridge': '1' };
+  for (const [changes, expected] of [[{}, 200], [{ headers: {} }, 403], [{ peerId: 'automation' }, 403],
+    [{ body: { action: 'login.start', id: 'bad/id' } }, 400],
+    [{ body: { action: 'status', id: 'telegram' } }, 400]]) {
+    const f = fixture({ body, headers, server, ...changes });
+    await f.task;
+    assert.equal(f.res.statusCode, expected);
+    assert.equal(f.calls.length, expected === 200 ? 1 : 0);
+    assert.equal(f.res.body.includes('fake'), false);
+  }
 });

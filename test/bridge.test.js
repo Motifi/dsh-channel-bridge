@@ -226,6 +226,28 @@ test('cursor acknowledgement follows durable accepted input, not the other way a
   assert.equal(changes.findIndex(state => state.inbox.length === 1) < changes.findIndex(state => state.cursor === 'new-cursor'), true);
 });
 
+test('only the approved WeChat sender can submit media and only DSH attachment references are persisted', async () => {
+  const admissions = [];
+  const content = [{ type: 'image', attachment: { id: 'image-in-dsh' } }];
+  const f = fixture({ admitAttachments: async attachments => { admissions.push(attachments); return content; } });
+  const media = { type: 2, image_item: { media: { encrypt_query_param: 'mock-query' } } };
+  const pure = (id, sender) => ({ ...raw(id, sender), item_list: [media] });
+  let downloads = 0;
+  f.client.downloadMedia = async () => { downloads++; return [{ name: 'image.jpg', data: 'eA==', mediaType: 'image/jpeg' }]; };
+  await f.bridge.receive(pure('before', 'wx-owner'), f.account().id, f.signal, f.client);
+  assert.deepEqual(f.sends, []);
+  await f.approve();
+  await f.bridge.receive(pure('other', 'unapproved'), f.account().id, f.signal, f.client);
+  await f.bridge.receive(pure('picture', 'wx-owner'), f.account().id, f.signal, f.client);
+  await f.bridge.receive(pure('picture', 'wx-owner'), f.account().id, f.signal, f.client);
+  assert.equal(downloads, 1);
+  assert.equal(admissions.length, 1);
+  assert.deepEqual(f.persisted().inbox[0].content, content);
+  assert.doesNotMatch(JSON.stringify(f.persisted()), /mock-query|eA==/);
+  await f.runOnce();
+  assert.deepEqual(f.runs[0].content, content);
+});
+
 test('failed input persistence leaves the server cursor unacknowledged', async () => {
   const f = fixture(); await f.approve(); const stop = new AbortController();
   const write = f.store.write; f.store.write = async state => { if (state.inbox.length) throw new Error('disk failed'); return write(state); };
