@@ -1,0 +1,31 @@
+# Dependencies, caches and build output
+node_modules/
+.pnpm-store/
+coverage/
+*.tgz
+.DS_Store
+
+# Local secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+.npmrc
+*.local.yml
+*.local.yaml
+.credentials*
+credentials.json
+credentials.yml
+credentials.yaml
+account.json
+
+# Runtime data and private conversations do not belong in Git
+.dsh/
+.runtime/
+weixin-workspace/
+sessions/
+logs/
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db

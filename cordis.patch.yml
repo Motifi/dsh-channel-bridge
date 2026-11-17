@@ -1,0 +1,20 @@
+- insert:
+    - id: preset-weixin-bridge-chat
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: weixin-bridge-chat
+        name: 微信安全聊天 / WeChat safe chat
+        description: Isolated text-only WeChat conversations. All tools are disabled.
+        order: 80
+        plugins:
+          - id: weixin-chat-native-executor
+            name: '@deepseek-ai/dsh-tool-executor-native'
+          - id: weixin-chat-policy
+            name: '@local/dsh-channel-bridge/session-policy'
+    - id: weixin-bridge
+      name: '@local/dsh-channel-bridge'
+      config:
+        # Omitted workspaceDir creates weixin-workspace in the DSH default directory.
+        pollTimeoutMs: 35000
+        contextBudget: 8
+        responseTimeoutMs: 180000
