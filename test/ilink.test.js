@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
-import { createCipheriv } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash } from 'node:crypto';
 import { getEventListeners } from 'node:events';
 import { inspect } from 'node:util';
 import test from 'node:test';
@@ -20,7 +20,7 @@ function fakeClient(responses = [{ ret: 0 }], options = {}) {
   const calls = [];
   const fetchImpl = async (url, init) => {
     const call = { url: new URL(url), init, headers: new Headers(init.headers) };
-    if (init.body !== undefined) call.body = JSON.parse(init.body);
+    if (init.body !== undefined) call.body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
     calls.push(call);
     const next = responses.shift();
     assert.notEqual(next, undefined, 'unexpected additional request');
@@ -148,6 +148,65 @@ test('getConfig and sendText emit exact user/context/text/client ID payloads', a
   });
   assert.match(calls[3].body.msg.client_id, /^dsh-[0-9a-f-]{36}$/);
   assert.equal(calls[3].body.msg.context_token, '');
+});
+
+test('sendTyping reports start and stop for a personal chat', async () => {
+  const { client, calls } = fakeClient([{ ret: 0 }, { ret: 0 }]);
+  for (const status of [1, 2]) await client.sendTyping({ userId: 'u', typingTicket: 'ticket', status });
+  assert.deepEqual(calls.map(call => call.body), [1, 2].map(status => ({
+    ilink_user_id: 'u', typing_ticket: 'ticket', status, base_info: BASE_INFO,
+  })));
+  assert.ok(calls.every(call => call.url.pathname === '/ilink/bot/sendtyping'));
+  await assert.rejects(client.sendTyping({ userId: 'u', typingTicket: 'ticket', status: 3 }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('sendMedia encrypts each attachment and sends the corresponding iLink item', async () => {
+  const payload = Buffer.from('attachment bytes');
+  const data = payload.toString('base64');
+  for (const [name, mediaType, itemType, itemKey] of [
+    ['photo.jpg', 1, 2, 'image_item'], ['note.silk', 4, 3, 'voice_item'],
+    ['archive.zip', 3, 4, 'file_item'], ['clip.mp4', 2, 5, 'video_item'],
+  ]) {
+    const { client, calls } = fakeClient([
+      { upload_param: 'upload/+' },
+      new Response(null, { headers: { 'x-encrypted-param': 'download-param' } }),
+      { ret: 0 },
+    ]);
+    await client.sendMedia({ userId: 'u', contextToken: CONTEXT, clientId: 'stable', file: { name, data } });
+    const [request, upload, send] = calls;
+    assert.equal(request.url.pathname, '/ilink/bot/getuploadurl');
+    assert.equal(request.body.media_type, mediaType);
+    assert.equal(request.body.to_user_id, 'u');
+    assert.equal(request.body.rawsize, payload.length);
+    assert.equal(request.body.rawfilemd5, createHash('md5').update(payload).digest('hex'));
+    assert.equal(request.body.filesize, upload.body.length);
+    assert.equal(upload.url.origin, 'https://novac2c.cdn.weixin.qq.com');
+    assert.equal(upload.url.pathname, '/c2c/upload');
+    assert.equal(upload.url.searchParams.get('encrypted_query_param'), 'upload/+');
+    assert.equal(upload.url.searchParams.get('filekey'), request.body.filekey);
+    assert.equal(upload.init.redirect, 'manual');
+    assert.equal(upload.headers.has('authorization'), false);
+    const decipher = createDecipheriv('aes-128-ecb', Buffer.from(request.body.aeskey, 'hex'), null);
+    assert.deepEqual(Buffer.concat([decipher.update(upload.body), decipher.final()]), payload);
+    assert.equal(send.body.msg.client_id, 'stable');
+    assert.equal(send.body.msg.context_token, CONTEXT);
+    const [item] = send.body.msg.item_list;
+    assert.equal(item.type, itemType);
+    assert.deepEqual(item[itemKey].media, {
+      encrypt_query_param: 'download-param',
+      aes_key: Buffer.from(request.body.aeskey).toString('base64'),
+      encrypt_type: 1,
+    });
+    if (itemType === 4) assert.equal(item.file_item.file_name, name);
+  }
+});
+
+test('sendMedia rejects a foreign upload URL before transmitting media', async () => {
+  const { client, calls } = fakeClient([{ upload_full_url: 'https://other.example/upload' }]);
+  await assert.rejects(client.sendMedia({
+    userId: 'u', contextToken: CONTEXT, file: { name: 'file.txt', data: 'eA==' },
+  }), { code: 'INVALID_UPLOAD_URL' });
+  assert.equal(calls.length, 1);
 });
 
 test('setAccount changes only in-memory credentials and validates atomically', async () => {
@@ -656,6 +715,13 @@ test('extractTextMessage includes only type-1 text, with text-only references', 
   assert.equal(result.text.includes('[image]'), false);
   assert.equal(result.text.includes('not text'), false);
   assert.equal(result.text.includes('never include media'), false);
+});
+
+test('extractTextMessage retains a quote title when WeChat omits the quoted message', () => {
+  const result = extractTextMessage(inbound({ item_list: [
+    { type: 1, text_item: { text: 'reply' }, ref_msg: { title: 'Original summary' } },
+  ] }));
+  assert.equal(result.text, '[引用: Original summary]\nreply');
 });
 
 test('extractTextMessage uses stable SHA-256 fallback IDs independent of key order and rotating contexts', () => {

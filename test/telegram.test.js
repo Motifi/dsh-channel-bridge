@@ -174,3 +174,145 @@ test('Telegram exposes auth and uncertain-send outcomes without exposing the sec
     !error.message.includes(token) && !error.kind
   ));
 });
+
+test('Telegram keeps bot-addressed commands and inline actions in the approved sender topic', async t => {
+  const abort = new AbortController();
+  t.after(() => abort.abort());
+  const received = [];
+  const answered = [];
+  const subscriptions = [];
+  let callbackData;
+  let polls = 0;
+  const adapter = telegram.create({ token, replyToMessage: true }, {
+    signal: abort.signal,
+    setStatus() {},
+    allowSender: id => id === '42',
+    async onMessage(entry) {
+      received.push(entry);
+      if (entry.text === '/help') await adapter.send(entry, 'Controls');
+      return true;
+    },
+    async fetch(url, { body }) {
+      switch (new URL(url).pathname.split('/').pop()) {
+        case 'getMe': return response({ id: 123, is_bot: true, username: 'ExampleBot' });
+        case 'getUpdates':
+          subscriptions.push(JSON.parse(body).allowed_updates);
+          if (++polls === 1) return response([
+            message(1, 42, '/help@OtherBot'),
+            message(2, 42, '/help@examplebot', { message_thread_id: 22 }),
+          ]);
+          if (polls === 2) return response([[99, 22], [42, 25], [42, 22]].map(([id, topic], index) => ({
+            update_id: index + 3,
+            callback_query: {
+              id: String(id), from: { id }, data: callbackData,
+              message: { message_id: 900, message_thread_id: topic, chat: { id: -123 }, from: { id: 123 } },
+            },
+          })));
+          abort.abort();
+          return response([]);
+        case 'sendMessage':
+          callbackData = JSON.parse(body).reply_markup.inline_keyboard.flat()
+            .find(button => button.text === '/stop').callback_data;
+          return response({ message_id: 900 });
+        case 'answerCallbackQuery':
+          answered.push(JSON.parse(body).callback_query_id);
+          return response(true);
+        default: assert.fail('Unexpected Telegram API method');
+      }
+    },
+  });
+  await adapter.run();
+  assert.ok(subscriptions[0].includes('callback_query'));
+  assert.deepEqual(received.map(({ senderId, threadId, text, requireExistingSession }) =>
+    ({ senderId, threadId, text, requireExistingSession })), [
+    { senderId: '42', threadId: '22', text: '/help', requireExistingSession: undefined },
+    { senderId: '42', threadId: '22', text: '/stop', requireExistingSession: true },
+  ]);
+  assert.deepEqual(answered, ['42']);
+});
+
+test('Telegram treats tool button labels that look like commands as ordinary selected input', async t => {
+  const abort = new AbortController();
+  t.after(() => abort.abort());
+  const received = [];
+  const keyboards = [];
+  let polls = 0;
+  const adapter = telegram.create({ token, groupPolicy: 'open' }, {
+    signal: abort.signal,
+    setStatus() {},
+    allowSender: id => id === '42',
+    async onMessage(entry) {
+      received.push(entry);
+      if (entry.text === 'pick') await adapter.send(entry, 'Choose', { metadata: { buttons: [[' /stop', '继续']] } });
+      return true;
+    },
+    async fetch(url, { body }) {
+      switch (new URL(url).pathname.split('/').pop()) {
+        case 'getMe': return response({ id: 123, is_bot: true });
+        case 'getUpdates':
+          if (++polls === 1) return response([message(1, 42, 'pick')]);
+          if (polls === 2) return response(keyboards.flat().map((button, index) => ({
+            update_id: index + 2,
+            callback_query: { id: String(index), from: { id: 42 }, data: button.callback_data,
+              message: { message_id: 900, chat: { id: -123 }, from: { id: 123 } } },
+          })));
+          abort.abort();
+          return response([]);
+        case 'sendMessage':
+          keyboards.push(...JSON.parse(body).reply_markup.inline_keyboard);
+          return response({ message_id: 900 });
+        case 'answerCallbackQuery': return response(true);
+        default: assert.fail('Unexpected Telegram API method');
+      }
+    },
+  });
+  await adapter.run();
+  assert.deepEqual(keyboards.flat().map(button => button.text), [' /stop', '继续']);
+  assert.equal(received[1].text, '已选择「/stop」');
+  assert.equal(received[2].text, '继续');
+  assert.ok(received.slice(1).every(entry => entry.requireExistingSession));
+});
+
+test('Telegram edits a group stream to its canonical final and uploads bytes to the original topic', async () => {
+  const abort = new AbortController();
+  const sent = [];
+  const adapter = telegram.create({ token }, {
+    signal: abort.signal,
+    allowSender: id => id === '42',
+    async fetch(url, { body }) {
+      const method = new URL(url).pathname.split('/').pop();
+      sent.push([method, body instanceof FormData ? Object.fromEntries(body) : JSON.parse(body)]);
+      return response({ message_id: 900 });
+    },
+  });
+  const original = { id: '1', chatId: '-123', senderId: '42', threadId: '22', replyTo: '12' };
+  await adapter.sendUpdate({ type: 'delta', text: 'par', messageId: 'reply', message: original });
+  await adapter.send(original, 'partial', { messageId: 'reply', attachments: [
+    { name: 'note.txt', mime: 'text/plain', data: Buffer.from('attachment').toString('base64') },
+  ] });
+  assert.deepEqual(sent.map(([method]) => method), ['sendMessage', 'editMessageText', 'sendDocument']);
+  assert.deepEqual(sent[1][1], { chat_id: '-123', message_id: 900, text: 'partial' });
+  assert.equal(sent[2][1].message_thread_id, '22');
+  assert.equal(sent[2][1].document.name, 'note.txt');
+  assert.equal(await sent[2][1].document.text(), 'attachment');
+});
+
+test('Telegram uses a private native draft and persists exactly one final answer', async () => {
+  const requests = [];
+  const adapter = telegram.create({ token }, {
+    signal: new AbortController().signal,
+    allowSender: id => id === '42',
+    async fetch(url, { body }) {
+      requests.push([new URL(url).pathname.split('/').pop(), JSON.parse(body)]);
+      return response({ message_id: 900 });
+    },
+  });
+  const original = { id: '1', chatId: '42', senderId: '42' };
+  await adapter.sendUpdate({ type: 'delta', text: 'par', messageId: 'reply', message: original });
+  await adapter.send(original, 'partial', { messageId: 'reply' });
+  assert.deepEqual(requests.map(([method]) => method), ['sendMessageDraft', 'sendMessage']);
+  assert.equal(requests[0][1].chat_id, 42);
+  assert.ok(Number.isSafeInteger(requests[0][1].draft_id) && requests[0][1].draft_id > 0);
+  assert.equal(requests[0][1].text, 'par');
+  assert.deepEqual(requests[1][1], { chat_id: '42', text: 'partial' });
+});

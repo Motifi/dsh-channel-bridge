@@ -12,13 +12,13 @@ window.__ModuleLoader__.load({
         "title": "WeChat bridge",
         "intro": "Connect your personal WeChat to a private, persistent DSH conversation.",
         "limits.title": "WeChat support",
-        "limits.chat": "WeChat conversations are chat-only with all tools, including local tools, disabled. DSH must remain running; sleep or exit interrupts the connection.",
-        "limits.media": "Private chats support text and inbound attachments up to 1 MiB each. Replies are text. Group chats and unsolicited broadcasts are not supported.",
+        "limits.chat": "Keep DSH running to receive WeChat messages. Sleep or exit interrupts the connection.",
+        "limits.media": "Private chats support text and attachments. Inbound and outbound attachments have a 1 MiB total limit per message. Group chats and broadcasts are unavailable.",
         "limits.owner": "Only the DSH owner can scan, resume, or manually approve access. WeChat messages and agent tools cannot grant permission.",
         "steps.title": "Connect in four steps",
         "steps.scan": "Scan the QR code and confirm sign-in in WeChat.",
         "steps.pair": "Send any text in WeChat to receive an 8-digit pairing code.",
-        "steps.approve": "Enter that code below and approve only yourself.",
+        "steps.approve": "Enter the pairing code below to approve the sender.",
         "steps.chat": "Send another text in WeChat to start the conversation.",
         "status.title": "Connection",
         "status.label": "Connection status: {status}",
@@ -40,7 +40,7 @@ window.__ModuleLoader__.load({
         "actions.pause": "Pause receiving",
         "actions.resume": "Resume connection",
         "actions.disconnect": "Disconnect…",
-        "actions.approve": "Approve only myself",
+        "actions.approve": "Approve sender",
         "actions.revoke": "Revoke access…",
         "actions.copy": "Copy session ID",
         "actions.copied": "Session ID copied",
@@ -77,8 +77,8 @@ window.__ModuleLoader__.load({
         "login.verificationLabel": "WeChat verification code",
         "login.verificationHint": "Enter the code from WeChat, not the 8-digit pairing code used below.",
         "login.verificationFailed": "That verification code was not accepted. Check WeChat and try again.",
-        "users.title": "2–3. Pair and approve only yourself",
-        "users.hint": "Send a text in WeChat first. Approving requires the 8-digit code sent back to that same user. Only one user can be approved at a time.",
+        "users.title": "2–3. Pair and approve senders",
+        "users.hint": "Send a text in WeChat first. Each sender must provide the 8-digit pairing code sent to their account.",
         "users.emptyDisconnected": "Sign in first. Your request will appear here after you send a text in WeChat.",
         "users.emptyConnected": "No pairing requests yet. Send any text in WeChat to receive a pairing code.",
         "users.pending": "Awaiting approval",
@@ -87,7 +87,7 @@ window.__ModuleLoader__.load({
         "users.firstSeen": "First message",
         "users.lastSeen": "Last message",
         "users.pairingLabel": "8-digit code received in WeChat",
-        "users.pairingHint": "Check that this is your own request. Never approve someone else's code.",
+        "users.pairingHint": "Confirm the sender's identity before entering their pairing code.",
         "users.pairingSent": "A pairing code was sent in WeChat.",
         "users.pairingExpires": "Pairing code expires at {time}.",
         "users.pairingExpired": "The pairing code has expired. Send a new text in WeChat to receive a fresh code.",
@@ -182,19 +182,35 @@ window.__ModuleLoader__.load({
         "channels.runtimeError": "The channel reported an error.",
         "channels.uncertain": "Delivery could not be confirmed for {count} replies. Check the DSH conversation before resending.",
         "channels.configBeforeAccess": "Save the channel configuration first.",
-        "channels.accessBeforeConnect": "Add an allowed sender before connecting."
+        "channels.accessBeforeConnect": "Add an allowed sender before connecting.",
+        "features.title": "Agent tools and replies",
+        "features.tools": "Allowed DSH tools",
+        "features.toolsHint": "Tools start disabled. Each selected tool still requires approval through DSH before it runs.",
+        "features.noTools": "No eligible tools are registered in DSH.",
+        "features.replies": "Reply options",
+        "features.repliesHint": "Options take effect on platforms that support the corresponding delivery mode.",
+        "features.streaming": "Stream reply text",
+        "features.sendProgress": "Send progress",
+        "features.sendToolHints": "Send tool activity",
+        "features.showReasoning": "Share reasoning",
+        "features.save": "Save tools and replies",
+        "features.unchanged": "Make a change to save.",
+        "features.saved": "Tools and reply options saved.",
+        "features.openSession": "Open DSH conversation",
+        "features.sessions": "Channel conversations",
+        "features.sessionHint": "Open a conversation to review its replies or approve a pending tool call."
       },
       "zh": {
         "title": "微信连接",
         "intro": "将个人微信连接到独立、持久的 DSH 私人会话。",
         "limits.title": "微信支持范围",
-        "limits.chat": "微信会话仅聊天，禁用所有工具（包括本地工具）；DSH 必须持续运行，休眠或退出会中断连接。",
-        "limits.media": "个人私聊支持文本与单个不超过 1 MiB 的入站附件，回复为文本。暂不支持群聊和主动群发。",
+        "limits.chat": "DSH 必须持续运行才能接收微信消息。休眠或退出会中断连接。",
+        "limits.media": "个人私聊可收发文本和附件。每条消息的入站或出站附件合计最多 1 MiB。群聊和群发暂不可用。",
         "limits.owner": "只有 DSH 所有者可以扫码、恢复连接或手动批准；微信消息和 Agent 工具均不能授予权限。",
         "steps.title": "四步开始使用",
         "steps.scan": "用微信扫码，并在微信中确认登录。",
         "steps.pair": "在微信发送任意文本，接收 8 位配对码。",
-        "steps.approve": "在下方输入配对码，仅批准本人。",
+        "steps.approve": "在下方输入配对码，批准该发送者。",
         "steps.chat": "在微信再发一条文本，开启会话。",
         "status.title": "连接状态",
         "status.label": "连接状态：{status}",
@@ -216,7 +232,7 @@ window.__ModuleLoader__.load({
         "actions.pause": "暂停接收",
         "actions.resume": "恢复连接",
         "actions.disconnect": "断开连接…",
-        "actions.approve": "仅批准本人",
+        "actions.approve": "批准发送者",
         "actions.revoke": "撤销授权…",
         "actions.copy": "复制会话 ID",
         "actions.copied": "会话 ID 已复制",
@@ -253,8 +269,8 @@ window.__ModuleLoader__.load({
         "login.verificationLabel": "微信登录验证码",
         "login.verificationHint": "请输入微信要求的登录验证码，不是下方的 8 位配对码。",
         "login.verificationFailed": "验证码未通过，请核对微信提示后重试。",
-        "users.title": "2–3. 配对并仅批准本人",
-        "users.hint": "请先在微信发送文本。批准时必须输入发送给该用户的 8 位配对码；同一时间只能批准一人。",
+        "users.title": "2–3. 配对并批准发送者",
+        "users.hint": "请让发送者先在微信发送文本。每位发送者都须提供发给其账号的 8 位配对码。",
         "users.emptyDisconnected": "请先扫码登录；在微信发送文本后，配对请求会显示在这里。",
         "users.emptyConnected": "尚无配对请求。请在微信发送任意文本，接收配对码。",
         "users.pending": "等待批准",
@@ -263,7 +279,7 @@ window.__ModuleLoader__.load({
         "users.firstSeen": "首次消息",
         "users.lastSeen": "最近消息",
         "users.pairingLabel": "微信收到的 8 位配对码",
-        "users.pairingHint": "请确认这是您本人的请求，切勿批准他人的配对码。",
+        "users.pairingHint": "输入配对码前，请确认该发送者的身份。",
         "users.pairingSent": "已通过微信发送配对码。",
         "users.pairingExpires": "配对码有效期至 {time}。",
         "users.pairingExpired": "配对码已过期，请在微信发送新文本以获取新配对码。",
@@ -358,7 +374,23 @@ window.__ModuleLoader__.load({
         "channels.runtimeError": "渠道报告异常。",
         "channels.uncertain": "有 {count} 条回复的送达情况无法确认。重新发送前，请先查看 DSH 会话。",
         "channels.configBeforeAccess": "请先保存渠道配置。",
-        "channels.accessBeforeConnect": "请先添加允许的发送者。"
+        "channels.accessBeforeConnect": "请先添加允许的发送者。",
+        "features.title": "Agent 工具与回复",
+        "features.tools": "允许的 DSH 工具",
+        "features.toolsHint": "工具默认关闭。勾选的工具仍须在 DSH 中获得本次批准后才能执行。",
+        "features.noTools": "DSH 尚未注册可用的工具。",
+        "features.replies": "回复选项",
+        "features.repliesHint": "选项是否生效取决于平台支持的发送方式。",
+        "features.streaming": "流式回复",
+        "features.sendProgress": "发送处理进度",
+        "features.sendToolHints": "发送工具调用提示",
+        "features.showReasoning": "发送推理内容",
+        "features.save": "保存工具和回复选项",
+        "features.unchanged": "修改选项后即可保存。",
+        "features.saved": "已保存工具和回复选项。",
+        "features.openSession": "打开 DSH 会话",
+        "features.sessions": "渠道会话",
+        "features.sessionHint": "打开对应会话可查看回复，或处理等待批准的工具调用。"
       }
     };
     // END LOCALE DATA
@@ -366,7 +398,7 @@ window.__ModuleLoader__.load({
     // BEGIN CLIENT CORE — pure transport/state helpers, tested without React or a DOM.
     const CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'paused', 'auth-required', 'error']);
     const ACTIVE_LOGIN_STATES = new Set(['waiting', 'scanned', 'verify-code']);
-    const MUTATIONS = new Set(['configure', 'login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
+    const MUTATIONS = new Set(['configure', 'preferences.update', 'login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
     const NOTICE_KEYS = {
       'login.start': 'notice.loginStarted', 'login.verify': 'notice.loginVerified',
       'login.cancel': 'notice.loginCancelled', 'connection.pause': 'notice.paused',
@@ -511,10 +543,14 @@ window.__ModuleLoader__.load({
 
     function validChannelSnapshot(value) {
       return Boolean(value && Array.isArray(value.channels)
+        && (value.toolChoices === undefined || (Array.isArray(value.toolChoices)
+          && value.toolChoices.every(name => typeof name === 'string')))
         && value.channels.every(channel => channel && typeof channel.id === 'string'
           && /^[a-z][a-z0-9_-]{0,63}$/.test(channel.id) && typeof channel.name === 'string'
           && CONNECTION_STATES.has(channel.status) && typeof channel.configured === 'boolean'
           && typeof channel.enabled === 'boolean' && Array.isArray(channel.allowedSenders)
+          && (channel.preferences?.allowedTools === undefined || (Array.isArray(channel.preferences.allowedTools)
+            && channel.preferences.allowedTools.every(name => typeof name === 'string')))
           && channel.allowedSenders.every(sender => typeof sender === 'string'))
         && new Set(value.channels.map(channel => channel.id)).size === value.channels.length);
     }
@@ -802,6 +838,7 @@ window.__ModuleLoader__.load({
 .wxb-row:hover,.wxb-row:focus-visible{background:var(--dsw-alias-bg-layer-2)}.wxb-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .wxb-subhead{margin-block:16px 2px}.wxb-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px}
 .wxb-field .wxb-channel-input{width:100%}.wxb-field textarea.wxb-channel-input{height:auto;min-height:72px;resize:vertical}
+.wxb-choices{min-width:0;margin:0;padding:0;border:0}.wxb-choices legend{padding:0;font-weight:600}.wxb-choices p{margin:5px 0 9px}.wxb-tool-grid{display:flex;flex-wrap:wrap;gap:8px 16px}.wxb-tool-grid label{display:inline-flex;align-items:center;gap:5px}.wxb-tool-grid input{accent-color:var(--dsw-alias-label-primary)}
 .wxb-link{color:var(--dsw-alias-brand-primary)}
 @media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}.wxb-crumb:hover{color:var(--dsw-alias-label-primary)}}
 @media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}.wxb-row{grid-template-columns:minmax(0,1fr) auto}}
@@ -894,14 +931,16 @@ window.__ModuleLoader__.load({
           } })));
     }
 
-    function SessionCopy({ t, sessionId }) {
+    function SessionCopy({ t, sessionId, openSession }) {
       const [copy, setCopy] = React.useState('idle');
       const mounted = React.useRef(true);
       React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
       return h('div', { className: 'wxb-stack' },
         h('span', { className: 'wxb-muted' }, t('users.sessionLabel')),
         h('code', { className: 'wxb-session', tabIndex: 0, 'aria-label': t('users.sessionLabel') }, sessionId),
-        h('div', { className: 'wxb-actions' }, h(ActionButton, {
+        h('div', { className: 'wxb-actions' }, openSession ? h(ActionButton, {
+          label: t('features.openSession'), onClick: () => openSession(sessionId),
+        }) : null, h(ActionButton, {
           label: t('actions.copy'), busy: copy === 'busy', busyLabel: t('busy.copy'),
           reason: copy === 'busy' ? t('busy.copy') : null,
           onClick: async () => {
@@ -920,12 +959,15 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale'],
+      inject: ['slots', 'locale', 'uiWorkspace'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, MESSAGES), 'weixinBridge: dictionaries');
         const t = ctx.locale.bind(NS);
         const subscribeLocale = listener => ctx.locale.subscribe(listener);
         const localeSnapshot = () => ctx.locale.getSnapshot();
+        const openSession = sessionId => {
+          if (/^(?:wxbridge|dshbridge)-[a-f0-9]{32}$/.test(sessionId)) ctx.uiWorkspace.openSession(sessionId);
+        };
 
         function BridgeNavIcon({ size, active }) {
           return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true,
@@ -998,9 +1040,8 @@ window.__ModuleLoader__.load({
           const failureId = React.useId();
           const approvalBusy = `user.approve:${user.userId}`;
           const revokeBusy = `user.revoke:${user.userId}`;
-          const otherApproved = state.snapshot.users.some(item => item.status === 'approved' && item.userId !== user.userId);
           const blockKey = pairingBlock(user, now);
-          const approvalReason = reason || (otherApproved ? t('users.onlyOne') : blockKey ? t(blockKey)
+          const approvalReason = reason || (blockKey ? t(blockKey)
             : !/^[0-9]{8}$/.test(code) ? t('disabled.code') : null);
           const localFailure = state.actionError && state.actionError.action === 'user.approve'
             && state.actionError.userId === user.userId ? state.actionError : null;
@@ -1025,13 +1066,12 @@ window.__ModuleLoader__.load({
               user.pairingStatus === 'sent' && !blockKey ? h('p', { className: 'wxb-muted' }, t('users.pairingSent')) : null,
               Number.isFinite(user.pairingExpiresAt) && !blockKey ? h('p', { className: 'wxb-muted' },
                 t('users.pairingExpires', { time: formatTime(user.pairingExpiresAt) })) : null,
-              blockKey ? h('p', { className: 'wxb-error' }, t(blockKey)) : null,
-              otherApproved ? h('p', { className: 'wxb-muted' }, t('users.onlyOne')) : null),
+              blockKey ? h('p', { className: 'wxb-error' }, t(blockKey)) : null),
             h('div', { className: 'wxb-field' },
               h('label', { htmlFor: inputId }, t('users.pairingLabel')),
               h('input', { id: inputId, className: 'wxb-input wxb-pairing', type: 'text', inputMode: 'numeric',
                 autoComplete: 'one-time-code', pattern: '[0-9]{8}', maxLength: 8, value: code,
-                disabled: Boolean(reason || otherApproved || blockKey),
+                disabled: Boolean(reason || blockKey),
                 'aria-describedby': `${hintId}${localFailure ? ` ${failureId}` : ''}`,
                 'aria-invalid': Boolean(localFailure),
                 onChange: event => { setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 8)); } }),
@@ -1043,7 +1083,7 @@ window.__ModuleLoader__.load({
             }))) : null,
             user.status === 'revoked' ? h('p', { className: 'wxb-muted' }, t('users.revokedHint')) : null,
             user.lastError ? h('p', { className: 'wxb-error' }, t('users.deliveryFailed')) : null,
-            user.sessionId ? h(SessionCopy, { t, sessionId: user.sessionId })
+            user.sessionId ? h(SessionCopy, { t, sessionId: user.sessionId, openSession })
               : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
         }
 
@@ -1298,6 +1338,52 @@ window.__ModuleLoader__.load({
                   busy: state.busy === 'configure' }))));
         }
 
+        function ChannelFeatures({ channel, store, state }) {
+          const configured = channel.preferences ?? {};
+          const [draft, setDraft] = React.useState(null);
+          const [saved, setSaved] = React.useState(false);
+          const options = channel.replyOptions ?? [];
+          const names = [...new Set([...(state.snapshot?.toolChoices ?? []), ...(configured.allowedTools ?? [])])];
+          const current = draft ?? configured;
+          const granted = current.allowedTools ?? [];
+          const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
+            : state.permission ? t(state.permission) : !state.snapshot || state.transportError || state.uncertain ? t('disabled.stale') : null;
+          function set(key, value) { setDraft(previous => ({ ...(previous ?? configured), [key]: value })); setSaved(false); }
+          async function save(event) {
+            event.preventDefault();
+            if (!draft || reason) return;
+            if (await store.run('preferences.update', { id: channel.id, preferences: draft })) { setDraft(null); setSaved(true); }
+          }
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('features.title')),
+            h('form', { className: 'wxb-stack', onSubmit: save },
+              h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
+                h('legend', null, t('features.tools')), h('p', { className: 'wxb-muted' }, t('features.toolsHint')),
+                names.length ? h('div', { className: 'wxb-tool-grid' }, ...names.map(name =>
+                  h('label', { key: name }, h('input', { type: 'checkbox', checked: granted.includes(name),
+                    onChange: event => set('allowedTools', event.target.checked ? [...granted, name] : granted.filter(tool => tool !== name)) }),
+                  h('code', null, name)))) : h('p', { className: 'wxb-muted' }, t('features.noTools'))),
+              options.length ? h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
+                h('legend', null, t('features.replies')), h('p', { className: 'wxb-muted' }, t('features.repliesHint')),
+                h('div', { className: 'wxb-tool-grid' }, ...options.map(key => h('label', { key },
+                  h('input', { type: 'checkbox', checked: current[key] ?? channel.replyDefaults?.[key] ?? false,
+                    onChange: event => set(key, event.target.checked) }), t(`features.${key}`))))) : null,
+              h(ActionButton, { type: 'submit', label: t('features.save'), reason: reason || (!draft ? t('features.unchanged') : null),
+                busy: state.busy === 'preferences.update' }),
+              saved ? h('p', { role: 'status', className: 'wxb-muted' }, t('features.saved')) : null));
+        }
+
+        function ChannelSessions({ sessions }) {
+          if (!sessions?.length) return null;
+          return h('section', { className: 'wxb-section' },
+            h('h3', null, t('features.sessions')), h('p', { className: 'wxb-muted' }, t('features.sessionHint')),
+            h('ul', { className: 'wxb-list' }, ...sessions.map(({ sessionId, senderId, chatId, threadId, instanceId }) =>
+              h('li', { key: sessionId }, h('button', { type: 'button', className: 'wxb-row',
+                onClick: () => openSession(sessionId) },
+              h('span', null, [senderId, chatId === senderId ? null : chatId, threadId, instanceId].filter(Boolean).join(' · ')),
+              h('span', { className: 'wxb-muted' }, t('features.openSession')))))));
+        }
+
         function ChannelDetail({ channel, store, state, headingRef }) {
           const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
           const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
@@ -1364,6 +1450,7 @@ window.__ModuleLoader__.load({
           const lastSelected = React.useRef(null);
           const rows = React.useRef(new Map());
           const weixinEntry = {
+            ...state.snapshot?.channels.find(channel => channel.id === 'weixin'),
             id: 'weixin', name: t('channels.weixin'),
             status: !weixin.transportError ? weixin.snapshot?.connectionStatus : null,
             configured: Boolean(weixin.snapshot?.account),
@@ -1396,8 +1483,11 @@ window.__ModuleLoader__.load({
                 onClick: () => { void store.refresh(); void weixinStore.refresh(); } })),
             !selected && state.transportError
               ? h('p', { className: 'wxb-error wxb-subhead', role: 'alert' }, t(state.transportError.key)) : null,
-            selected?.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin, headingRef: detailHeading })
-              : selected ? h(ChannelDetail, { key: selected.id, channel: selected, store, state, headingRef: detailHeading })
+            selected ? h(React.Fragment, { key: selected.id },
+              selected.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin, headingRef: detailHeading })
+                : h(ChannelDetail, { channel: selected, store, state, headingRef: detailHeading }),
+              h(ChannelFeatures, { channel: selected, store, state }),
+              selected.id !== 'weixin' ? h(ChannelSessions, { sessions: selected.sessions }) : null)
                 : h('ul', { className: 'wxb-list' }, channels.map(channel => {
                   const status = channel.id === 'weixin' ? channel.status : available ? channel.status : null;
                   const isLoading = channel.id === 'weixin' ? weixin.initialLoading : state.initialLoading;

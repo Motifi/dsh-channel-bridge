@@ -66,6 +66,66 @@ test('routes owner-approved senders into stable channel, chat, thread and user s
   assert.doesNotMatch(JSON.stringify(f.bridge.snapshot()), /secret|a reply/);
 });
 
+test('only established sender and instance routes can drive callbacks, and /new rotates that route only', async t => {
+  const f = fixture(); t.after(() => f.bridge.close());
+  await f.bridge.initialize(); await f.connect('one');
+  const { onMessage } = f.options.get('one');
+  await onMessage(inbound('invalid callback', { requireExistingSession: true, instanceId: 'a' }));
+  await onMessage(inbound('first', { instanceId: 'a' }));
+  await until(() => f.sends.length === 1);
+  await onMessage(inbound('callback', { requireExistingSession: true, instanceId: 'a' }));
+  await onMessage(inbound('other instance', { requireExistingSession: true, instanceId: 'b' }));
+  await onMessage(inbound('rotate', { text: '/new', instanceId: 'a' }));
+  await onMessage(inbound('next', { instanceId: 'a' }));
+  await until(() => f.sends.length === 4);
+  assert.deepEqual(f.sessions.map(({ message }) => message.id), ['first', 'callback', 'next']);
+  assert.equal(f.sessions[0].sessionId, f.sessions[1].sessionId);
+  assert.notEqual(f.sessions[0].sessionId, f.sessions[2].sessionId);
+});
+
+test('only routes authorized updates and preserves outbound files in the durable reply', async t => {
+  const f = fixture(); t.after(() => f.bridge.close());
+  f.bridge.getPreferences = () => ({ streaming: true, sendToolHints: false });
+  const original = f.bridge.create;
+  const updates = [];
+  const attachment = { name: 'report.txt', mime: 'text/plain', data: 'SGVsbG8=' };
+  f.bridge.create = (...args) => ({ ...original(...args),
+    async sendUpdate(update) { updates.push(update); },
+    async sendPayload(reply) { f.sends.push(reply); },
+  });
+  f.bridge.backend.run = async (_entry, _signal, onUpdate) => {
+    onUpdate({ type: 'delta', text: 'A' });
+    onUpdate({ type: 'tool', text: 'not shared' });
+    return { state: 'completed', text: 'A reply', attachments: [attachment] };
+  };
+  await f.bridge.initialize(); await f.connect('one');
+  await f.options.get('one').onMessage(inbound('one', { route: { thread: 'example' } }));
+  await until(() => f.sends.length === 1);
+  assert.deepEqual(updates.map(({ type, text }) => [type, text]), [['delta', 'A']]);
+  assert.equal(updates[0].messageId, f.sends[0].messageId);
+  assert.deepEqual(updates[0].route, { thread: 'example' });
+  assert.deepEqual(f.sends[0].attachments, [attachment]);
+});
+
+test('proactive deliveries queue once for the exact authorized route and cannot follow revocation', async t => {
+  const f = fixture(); t.after(() => f.bridge.close());
+  await f.bridge.initialize(); await f.connect('one');
+  const { onMessage } = f.options.get('one');
+  await onMessage(inbound('first', { instanceId: 'a' }));
+  await until(() => f.sends.length === 1);
+  const { sessionId } = f.sessions[0];
+  const message = { id: 'tick-1', text: 'a scheduled result' };
+  assert.deepEqual(f.bridge.boundSessions(), [sessionId]);
+  assert.equal(await f.bridge.sendToSession(sessionId, message), true);
+  assert.equal(await f.bridge.sendToSession(sessionId, message), true);
+  await until(() => f.sends.length === 2);
+  assert.equal(f.sends[1].message.instanceId, 'a');
+  assert.equal(f.sends[1].message.senderId, 'alice');
+  await f.bridge.action('configure', { id: 'one', allowedSenders: ['bob'] });
+  assert.deepEqual(f.bridge.boundSessions(), []);
+  assert.equal(await f.bridge.sendToSession(sessionId, { id: 'tick-2', text: 'private content' }), false);
+});
+
 test('disconnect clears credentials, rotates conversation identity, and rejects stale transport callbacks', async t => {
   const f = fixture(); t.after(() => f.bridge.close());
   await f.bridge.initialize(); await f.connect('one');

@@ -25,6 +25,7 @@ account.json
 .runtime/
 weixin-workspace/
 channel-workspace/
+channel-private-workspaces/
 sessions/
 logs/
 *.log

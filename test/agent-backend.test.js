@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { getEventListeners } from 'node:events';
 import { setImmediate as nextTick } from 'node:timers/promises';
 import test from 'node:test';
-import { AgentBackend } from '../lib/agent-backend.js';
+import { AgentBackend, commandDomainSpec, createCommandReceipts } from '../lib/agent-backend.js';
 import { initialProjection, applyProjection, completionOf, contentFingerprint } from '../lib/projection.js';
 import { BridgeError, PRESET_ID, hash } from '../lib/state.js';
 
@@ -45,14 +45,17 @@ function harness(t, options = {}) {
   const live = new Map();
   const cells = new WeakMap();
   const pending = new WeakMap();
+  const logs = new WeakMap();
   const presets = new WeakMap();
   const listeners = new Set();
+  const streamListeners = new Set();
   const owned = new Set();
   const calls = {
     get: [], stat: [], create: [], resume: [], mount: [], followup: [], remove: [], cancel: [], dispose: [], flush: 0, whenIdle: 0,
   };
   let sequence = 0;
   let backend;
+  let receipts = [];
   const projection = {
     stateOf(session) {
       if (options.projectionError) throw options.projectionError;
@@ -69,6 +72,7 @@ function harness(t, options = {}) {
       pending.get(agent.session)[data.target].splice(data.start, data.removedCount ?? 0, ...data.inserted);
     }
     cells.set(agent.session, applyProjection(cells.get(agent.session), event));
+    logs.get(agent.session).push(event);
     notify(agent.session, event);
     return event;
   }
@@ -82,10 +86,12 @@ function harness(t, options = {}) {
       snapshotEvents() { throw new Error('must not rescan session history'); },
     };
     cells.set(session, initialProjection(session.header));
+    logs.set(session, []);
     pending.set(session, { 'next-turn': [], 'next-step': [] });
     presets.set(session, changes.preset ?? PRESET_ID);
     const agent = {
       id, session, status: changes.status ?? 'idle', ctx: { fakeAgentScope: id },
+      model: changes.model,
       inbox: {
         get nextTurn() { return pending.get(session)['next-turn']; },
         get nextStep() { return pending.get(session)['next-step']; },
@@ -138,7 +144,7 @@ function harness(t, options = {}) {
   }
   async function factory(kind, config) {
     const id = config.sessionId ?? config.resumeSessionId;
-    const agent = makeAgent(id, options.createdAgent ?? {});
+    const agent = makeAgent(id, { header: config.meta ?? options.stored?.header, ...options.createdAgent });
     await config.setup?.(agent.ctx, agent);
     live.set(id, agent);
     const handle = makeHandle(agent);
@@ -161,19 +167,41 @@ function harness(t, options = {}) {
       presetForSession(session) { return presets.get(session); },
     },
     sessionPersistence: {
-      async stat(id, settings) { calls.stat.push({ id, settings }); return options.stored; },
+      async stat(id, settings) {
+        calls.stat.push({ id, settings });
+        const agent = live.get(id);
+        return options.inspect?.(id) ?? (options.inspectLive && agent
+          ? { header: agent.session.header, revision: logs.get(agent.session).length } : options.stored);
+      },
+      async open(id, mode) {
+        assert.equal(mode, 'read');
+        const agent = live.get(id);
+        const source = options.read?.(id) ?? { header: agent.session.header, events: logs.get(agent.session) };
+        return { header: source.header, inheritedEventCount: 0,
+          async read(offset, length) { return { events: source.events.slice(offset, offset + length) }; }, async close() {} };
+      },
       async flush() {
         calls.flush += 1;
         await options.onFlush?.(calls.flush);
       },
     },
-    on(name, callback) {
-      assert.equal(name, 'session/event');
-      listeners.add(callback);
-      return () => { listeners.delete(callback); };
+    commands: options.commands,
+    llm: options.llm,
+    skills: options.skills,
+    on(name, callback, options) {
+      assert.ok(['session/event', 'agent/assistant-stream'].includes(name));
+      if (name === 'agent/assistant-stream') assert.equal(options?.global, true);
+      const target = name === 'session/event' ? listeners : streamListeners;
+      target.add(callback);
+      return () => { target.delete(callback); };
     },
   };
-  backend = new AgentBackend(ctx, { projection, workspaceDir: WORKSPACE, timeoutMs: options.timeoutMs ?? 1_000 });
+  const commandReceipts = options.commandReceipts ?? createCommandReceipts({
+    get: () => receipts,
+    set: async state => { receipts = commandDomainSpec.global.schema.parse(JSON.parse(JSON.stringify(state))); },
+  });
+  backend = new AgentBackend(ctx, { projection, workspaceDir: WORKSPACE, timeoutMs: options.timeoutMs ?? 1_000,
+    workspaceForSession: options.workspaceForSession, commandReceipts });
   function borrow(id = SESSION, changes) {
     const agent = makeAgent(id, changes);
     live.set(id, agent);
@@ -217,8 +245,9 @@ function harness(t, options = {}) {
     for (const handle of owned) if (!handle.disposed) await handle.dispose().catch(() => {});
   });
   return {
-    backend, ctx, calls, cells, presets, listeners, live, projection,
+    backend, ctx, calls, cells, presets, listeners, live, projection, streamListeners,
     makeAgent, makeHandle, borrow, publish, notify, seedQueued, admit, complete,
+    emitStream(agent, frame) { for (const listener of streamListeners) listener({ agent, frame }); },
   };
 }
 
@@ -230,6 +259,244 @@ test('model selection is read-only and unavailable/throwing selections fail clos
   }
   assert.equal(harness(t, { modelError: new Error('unavailable') }).backend.model(), null);
   assert.equal(h.calls.create.length, 0);
+});
+
+test('live events are bounded and tied to the admitted message and exact attempt', async (t) => {
+  const h = harness(t);
+  const item = entry('events');
+  const agent = h.borrow();
+  const other = h.borrow(OTHER_SESSION);
+  const updates = [];
+  const start = { type: 'start', attemptId: 'active', revision: 1, turn: 1, step: 1 };
+  const chunk = (text, type = 'text-delta', index = 0) => ({
+    type: 'chunk', attemptId: 'active', revision: index + 2, index, chunk: { type, index: 0, text },
+  });
+  const pending = observe(h.backend.run(item, undefined, update => { updates.push(update); }));
+  await nextTick();
+  h.emitStream(agent, start);
+  h.emitStream(agent, chunk('unadmitted prefix'));
+  h.admit(agent, item);
+  h.emitStream(other, start);
+  h.emitStream(other, chunk('foreign private text'));
+  h.emitStream(agent, start);
+  h.emitStream(agent, chunk('hidden thinking', 'reasoning-delta'));
+  h.emitStream(agent, chunk('hello ', 'text-delta', 1));
+  h.emitStream(agent, { ...chunk('old attempt'), revision: 2 });
+  h.publish(agent, 'tool/call', { turn: 1, step: 1, name: 'search', arguments: 'PRIVATE_TOOL_ARGUMENTS' });
+  h.publish(agent, 'tool/result', { turn: 1, step: 1, message: { content: [{ type: 'text', text: 'PRIVATE_TOOL_RESULT' }] } });
+  h.complete(agent, item, 'reply');
+  assert.equal((await pending).text, 'reply');
+  assert.deepEqual(updates.filter(update => update.type === 'delta').map(update => update.text), ['hello ']);
+  assert.deepEqual(updates.filter(update => update.type === 'tool').map(update => update.metadata.name), ['search']);
+  assert.ok(updates.some(update => update.type === 'progress'));
+  assert.doesNotMatch(JSON.stringify(updates), /private|hidden|foreign|unadmitted|old attempt/i);
+  assert.equal(h.streamListeners.size, 0);
+  assert.equal(h.listeners.size, 0);
+});
+
+test('per-turn tool admission precedes native followup and disposes after completion', async (t) => {
+  const order = [];
+  const h = harness(t, { onFollowup: () => { order.push('followup'); } });
+  const item = entry('tool-scope', { admitTools(agent) {
+    assert.equal(agent.id, SESSION);
+    order.push('admit');
+    return () => { order.push('dispose'); };
+  } });
+  const agent = h.borrow();
+  const pending = observe(h.backend.run(item));
+  await nextTick();
+  assert.deepEqual(order, ['admit', 'followup']);
+  h.complete(agent, item);
+  await pending;
+  assert.deepEqual(order, ['admit', 'followup', 'dispose']);
+});
+
+test('new sessions use a private cwd and old base cwd remains valid for isolated histories', async (t) => {
+  const perSession = `${WORKSPACE}/${SESSION}`;
+  const workspaceForSession = async id => `${WORKSPACE}/${id}`;
+  const h = harness(t, { workspaceForSession });
+  const agent = await h.backend.ensureAgent(entry());
+  assert.equal(agent.session.header.cwd, perSession);
+  assert.equal(h.backend.isSafe(SESSION), true);
+  const legacy = harness(t, { workspaceForSession, stored: { header: { cwd: WORKSPACE, agentPreset: PRESET_ID } } });
+  assert.equal((await legacy.backend.ensureAgent(entry())).session.header.cwd, WORKSPACE);
+  const other = harness(t, { workspaceForSession });
+  other.borrow(SESSION, { header: { cwd: `${WORKSPACE}/${OTHER_SESSION}` } });
+  await assert.rejects(other.backend.ensureAgent(entry()), bridgeError('FORBIDDEN'));
+});
+
+test('interrupt cancels only a live matching bridge Agent with clean history', (t) => {
+  const h = harness(t);
+  assert.equal(h.backend.interrupt(SESSION), false);
+  assert.equal(h.calls.resume.length, 0);
+  const agent = h.borrow(SESSION, { status: 'running' });
+  h.borrow(OTHER_SESSION, { header: { cwd: `${WORKSPACE}/foreign` }, status: 'running' });
+  assert.equal(h.backend.interrupt(OTHER_SESSION), false);
+  assert.equal(h.backend.interrupt(SESSION), true);
+  assert.deepEqual(h.calls.cancel.map(value => value.agent), [agent]);
+});
+
+test('hasSession requires a real live or persisted exact scope and never resumes the session', async (t) => {
+  const h = harness(t);
+  assert.equal(await h.backend.hasSession('ordinary-web-session'), false);
+  assert.equal(await h.backend.hasSession(SESSION), false);
+  const agent = h.borrow();
+  assert.equal(await h.backend.hasSession(SESSION), true);
+  h.cells.set(agent.session, { ...h.projection.stateOf(agent.session), contaminated: true });
+  assert.equal(await h.backend.hasSession(SESSION), false);
+  const stored = harness(t, { stored: { header: { id: SESSION, cwd: WORKSPACE, agentPreset: PRESET_ID } } });
+  assert.equal(await stored.backend.hasSession(SESSION), true);
+  assert.equal(stored.calls.resume.length, 0);
+  const foreign = harness(t, { stored: { header: { id: SESSION, cwd: '/foreign', agentPreset: PRESET_ID } } });
+  assert.equal(await foreign.backend.hasSession(SESSION), false);
+});
+
+test('reviewed native command executes once, rejects unreviewed slash text and survives a replay', async (t) => {
+  const runs = [];
+  const h = harness(t, { commands: {
+    find: (_agent, name) => name === 'compact' ? { definitionId: '@deepseek-ai/dsh-command-compact' } : undefined,
+    execute: async (agent, line, attachments, signal) => {
+      runs.push({ agent, line });
+      assert.deepEqual(attachments, []);
+      assert.equal(signal.aborted, false);
+      return { commandId: 'command', result: { kind: 'success', text: 'Compaction finished.' } };
+    },
+  } });
+  const agent = h.borrow();
+  const item = entry('cmd', { text: '/compact' });
+  const result = await h.backend.run(item);
+  assert.equal(result.text, 'Compaction finished.');
+  assert.deepEqual(await h.backend.run(item), result);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].agent, agent);
+  assert.equal(h.calls.followup.length, 0);
+  await h.backend.run(entry('unknown-cmd', { text: '/restart' }));
+  await h.backend.run(entry('compact-with-args', { text: '/compact unexpected argument' }));
+  assert.equal(h.calls.followup.length, 0);
+  assert.equal(runs.length, 1);
+});
+
+test('a compact receipt with an unknown result cannot execute twice after restart', async (t) => {
+  let saved = [];
+  let executions = 0;
+  const state = {
+    get: () => saved,
+    set: async (receipts) => {
+      if (receipts.some(receipt => receipt.text)) throw new Error('result persistence failed');
+      saved = receipts;
+    },
+  };
+  const options = {
+    commands: {
+      find: () => ({ definitionId: '@deepseek-ai/dsh-command-compact' }),
+      async execute() { executions++; return { result: { kind: 'success', text: 'Compacted.' } }; },
+    },
+  };
+  const first = harness(t, { ...options, commandReceipts: createCommandReceipts(state) });
+  const item = entry('cmd-interrupted', { text: '/compact' });
+  await assert.rejects(first.backend.run(item), /result persistence failed/);
+  const restored = harness(t, { ...options, commandReceipts: createCommandReceipts(state) });
+  assert.match((await restored.backend.run(item)).text, /执行结果无法确认/);
+  assert.equal(executions, 1);
+});
+
+test('status and skill commands expose only scope metadata and model selection follows the host catalog', async (t) => {
+  const choices = [];
+  const h = harness(t, {
+    llm: { async listModels(provider) { return provider === 'safe-provider' ? [{ provider, id: 'safe/model' }] : []; } },
+    skills: { async list({ cwd, scope, signal }) {
+      assert.equal(cwd, WORKSPACE);
+      assert.equal(scope.id, SESSION);
+      assert.equal(signal.aborted, false);
+      return [{ name: 'safe-skill', path: 'PRIVATE_PATH', invocation: { userInvocable: true } },
+        { name: 'private-skill', invocation: { userInvocable: false } }];
+    } },
+  });
+  h.borrow(SESSION, { model: { current: () => MODEL, select: (route) => choices.push(route) } });
+  assert.match((await h.backend.run(entry('status', { text: '/status' }))).text, /fake-provider\/fake-model/);
+  assert.match((await h.backend.run(entry('model', { text: '/model' }))).text, /fake-provider\/fake-model/);
+  const listed = await h.backend.run(entry('skill', { text: '/skill' }));
+  assert.match(listed.text, /safe-skill/);
+  assert.doesNotMatch(listed.text, /private-skill|PRIVATE_PATH/);
+  const allowed = entry('model-select', { text: '/model safe-provider/safe/model' });
+  await h.backend.run(allowed);
+  await h.backend.run(allowed);
+  await h.backend.run(entry('unlisted-model', { text: '/model safe-provider/unlisted' }));
+  assert.deepEqual(choices, [{ provider: 'safe-provider', model: 'safe/model' }]);
+  assert.equal(h.calls.followup.length, 0);
+});
+
+test('canceling slow model discovery does not leave a later model-selection mutation', async (t) => {
+  const lookup = deferred();
+  const requested = deferred();
+  const controller = new AbortController();
+  const choices = [];
+  const h = harness(t, { llm: { listModels() { requested.resolve(); return lookup.promise; } } });
+  h.borrow(SESSION, { model: { current: () => MODEL, select: route => choices.push(route) } });
+  const pending = h.backend.run(entry('slow-model', { text: '/model safe-provider/safe-model' }), controller.signal);
+  await requested.promise;
+  controller.abort();
+  await pending;
+  lookup.resolve([{ provider: 'safe-provider', id: 'safe-model' }]);
+  await nextTick();
+  assert.deepEqual(choices, []);
+});
+
+test('schedule relay filters historical, unbound, and contaminated outcomes and retries durable delivery', async (t) => {
+  const header = id => ({ id, cwd: WORKSPACE, agentPreset: PRESET_ID });
+  const reminder = (number, time, text) => [
+    { type: 'turn/start', data: { turn: number } },
+    { type: 'user/message', surfaceOp: 'append', data: { role: 'user', source: { kind: 'schedule' },
+      id: `f9b58b71-7679-4574-8f4e-112f0e11a20${number}` } },
+    { type: 'assistant/message', data: { turn: number, message: { content: [{ type: 'text', text }] } } },
+    { type: 'turn/end', data: { turn: number, reason: { kind: 'completed' } }, time },
+  ];
+  const data = new Map([
+    [SESSION, [...reminder(1, 90, 'historical'), ...reminder(2, 110, 'allowed')]],
+    [OTHER_SESSION, [...reminder(3, 110, 'unbound')]],
+  ]);
+  const state = new Map([[PRESET_ID, { enabledAt: 100 }]]);
+  const receiptStore = { get: key => state.get(key), async put(key, value) { state.set(key, value); } };
+  const options = {
+    inspect: id => data.has(id) ? { header: header(id), revision: data.get(id).length } : undefined,
+    read: id => ({ header: header(id), events: data.get(id).map((event, seq) => ({ seq, time: 110, ...event })) }),
+  };
+  const h = harness(t, options);
+  const attempted = [];
+  const retry = deferred();
+  const stop = h.backend.startScheduleRelay({ listSessions: () => [SESSION], state: receiptStore, retryMs: 5,
+    async send(receipt) {
+      attempted.push(receipt);
+      if (attempted.length === 1) return false;
+      retry.resolve();
+      return true;
+    },
+  });
+  let timer;
+  try {
+    await Promise.race([retry.promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Error('relay did not retry')), 1_000);
+    })]);
+  } finally { clearTimeout(timer); }
+  await stop();
+  assert.deepEqual(attempted.map(item => item.text), ['allowed', 'allowed']);
+  assert.equal(attempted[0].messageId, attempted[1].messageId);
+  assert.deepEqual(state.get(SESSION), { deliveredSeq: 7 });
+  assert.equal(h.calls.resume.length, 0);
+  assert.equal(h.listeners.size, 0);
+
+  data.get(SESSION).push(...reminder(3, 150, 'blocked'),
+    { type: 'user/message', surfaceOp: 'append', data: { id: 'desktop-user-message', source: { kind: 'user' } } });
+  const restored = harness(t, options);
+  const list = deferred();
+  let unexpected = false;
+  restored.backend.startScheduleRelay({ state: receiptStore, retryMs: 5,
+    listSessions() { list.resolve(); return [SESSION]; }, send() { unexpected = true; return true; } });
+  await list.promise;
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await restored.backend.close();
+  assert.equal(unexpected, false);
+  assert.deepEqual(state.get(SESSION), { deliveredSeq: 7 });
 });
 
 test('new sessions use explicit isolated metadata, selected route, scoped setup and cancellation', async (t) => {

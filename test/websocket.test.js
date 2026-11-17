@@ -181,3 +181,55 @@ test('WebSocket relays bounded inline attachments and rejects local paths and ov
     { name: 'readme.txt', kind: 'file', mediaType: 'text/plain', data },
   ] }]);
 });
+
+test('WebSocket sends updates, final text and inline media to the authenticated turn', async t => {
+  const bridge = await localBridge(t, assert.fail);
+  const { client, ready } = await connect(t, bridge, 'alice', tokenA);
+  const message = { id: 'turn', senderId: 'alice', chatId: ready.chat_id };
+  const delta = waitForFrame(client);
+  await bridge.adapter.sendUpdate({ type: 'delta', messageId: 'stream', text: 'partial', message });
+  assert.deepEqual(await delta, {
+    event: 'delta', chat_id: ready.chat_id, turn_id: 'turn', stream_id: 'stream', text: 'partial',
+  });
+  const final = waitForFrame(client);
+  const media = [{ name: 'note.txt', mime: 'text/plain', data: Buffer.from('note').toString('base64') }];
+  await bridge.adapter.send(message, 'final', { messageId: 'stream', attachments: media });
+  assert.deepEqual(await final, {
+    event: 'message', chat_id: ready.chat_id, turn_id: 'turn', text: 'final', stream_id: 'stream', media,
+  });
+  await assert.rejects(bridge.adapter.sendUpdate({
+    type: 'delta', messageId: 'stream', text: 'missing permission', message: { ...message, senderId: 'bob' },
+  }), { kind: 'rejected' });
+});
+
+test('WebSocket exposes tool option rows on the original authenticated turn', async t => {
+  const bridge = await localBridge(t, assert.fail);
+  const { client, ready } = await connect(t, bridge, 'alice', tokenA);
+  const message = { id: 'turn-options', senderId: 'alice', chatId: ready.chat_id };
+  const frame = waitForFrame(client);
+  const buttons = [['继续', '取消'], ['Other']];
+  await bridge.adapter.send(message, 'Options', { metadata: { buttons } });
+  assert.deepEqual(await frame, {
+    event: 'message', chat_id: ready.chat_id, turn_id: 'turn-options', text: 'Options', buttons,
+  });
+  for (const bad of [[[' /stop']], [['选'.repeat(22)]]]) {
+    await assert.rejects(bridge.adapter.send(message, 'Options', { metadata: { buttons: bad } }), {
+      kind: 'rejected',
+    });
+  }
+});
+
+test('WebSocket maps typed controls only to the authenticated client chat', async t => {
+  const incoming = [];
+  const bridge = await localBridge(t, message => { incoming.push(message); return true; });
+  const { client, ready } = await connect(t, bridge, 'alice', tokenA);
+  for (const [type, expected] of [['stop', '/stop'], ['new_chat', '/new']]) {
+    const accepted = waitForFrame(client);
+    client.send(JSON.stringify({ type, chat_id: ready.chat_id, turn_id: type }));
+    assert.equal((await accepted).event, 'message_accepted');
+    assert.deepEqual(incoming.at(-1), {
+      id: type, senderId: 'alice', chatId: ready.chat_id, text: expected,
+      ...(type === 'stop' ? { requireExistingSession: true } : {}),
+    });
+  }
+});

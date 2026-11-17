@@ -95,9 +95,16 @@ test('browser artifact is a lazy factory with React as its only runtime import',
   assert.deepEqual(imports, ['react']);
   assert.doesNotMatch(source, /window\.confirm|dangerouslySetInnerHTML|createPortal|document\.body|localStorage|sessionStorage/);
   assert.doesNotMatch(source, /<iframe|<script|https?:\/\//);
-  assert.match(source, /inject: \['slots', 'locale'\]/);
+  assert.match(source, /inject: \['slots', 'locale', 'uiWorkspace'\]/);
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar'));
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-layout'));
+});
+
+test('opens bridge conversations using DSH workspace navigation for tool approvals', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-workspace'));
+  assert.match(source, /ctx\.uiWorkspace\.openSession\(sessionId\)/);
+  assert.match(source, /h\(ChannelSessions, \{ sessions: selected\.sessions \}\)/);
 });
 
 test('client contributes a single page after Automation tasks through the official navigation slots', () => {

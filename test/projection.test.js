@@ -213,6 +213,37 @@ test('assistant output without an active WeChat input is ignored', () => {
   assert.deepEqual(state.records, []);
 });
 
+test('native scheduled input remains isolated and its completed reply has an independent receipt', () => {
+  const messageId = 'f9b58b71-7679-4574-8f4e-112f0e11a209';
+  const reminder = { id: messageId, role: 'user', source: { kind: 'schedule' }, content: [{ type: 'text', text: 'private task' }] };
+  const done = end();
+  const state = fold(initialProjection(header), splice([reminder]), start(), accepted(reminder), assistant('scheduled result'), done);
+  assert.equal(state.contaminated, false);
+  assert.deepEqual(state.scheduleResult, { messageId, seq: done.seq, time: done.time, text: 'scheduled result' });
+  assert.equal(state.records.length, 0);
+  assert.equal(fold(initialProjection(header), splice([{ ...reminder, id: 'untrusted' }])).contaminated, true);
+  const restored = projectionSchema.parse(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(restored.scheduleResult, state.scheduleResult);
+});
+
+test('mixed scheduled and channel input never export a shared answer', () => {
+  const message = user();
+  const reminder = { ...message, id: 'f9b58b71-7679-4574-8f4e-112f0e11a209', source: { kind: 'schedule' } };
+  const state = fold(running(message), splice([reminder]), accepted(reminder), assistant('mixed output'), end());
+  assert.equal(state.contaminated, false);
+  assert.equal(state.scheduleResult, undefined);
+  assertFailed(state, message.id, 'mixed-turn');
+});
+
+test('native model-switch notices and skill catalogs do not contaminate channel sessions', () => {
+  const message = user();
+  const notice = { role: 'user', id: 'f9b58b71-7679-4574-8f4e-112f0e11a209', source: { kind: 'model-selection', form: 'notice' } };
+  const catalog = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a210', source: { kind: 'skill-catalog', form: 'catalog' } };
+  const state = fold(running(message), accepted(notice), accepted(catalog), assistant('reply'), end());
+  assert.equal(state.contaminated, false);
+  assert.equal(completionOf(state, message.id).text, 'reply');
+});
+
 test('multiple admitted bridge inputs settle only in their shared active turn', () => {
   const first = user('first');
   const second = user('second');

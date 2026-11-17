@@ -78,6 +78,71 @@ class TransportTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.messages[2]["ok"])
         self.assertTrue(self.messages[3]["ok"])
 
+    async def test_send_copies_outbound_files_and_discards_them_after_delivery(self):
+        paths = []
+
+        async def deliver(envelope):
+            path = Path(envelope["media"][0])
+            self.assertEqual(path.name, "image.png")
+            self.assertEqual(path.read_bytes(), b"picture")
+            self.assertTrue(path.is_relative_to(self.root.resolve()))
+            self.assertEqual(envelope["buttons"], [["Continue"]])
+            self.assertEqual(envelope["metadata"], {"message_id": "1.1", "thread_ts": "1.0"})
+            paths.append(path)
+
+        self.transport.deliver = deliver
+        await self.transport.inbound(self.msg)
+        await self.transport.send({
+            "requestId": "attachment", "messageId": self.messages[1]["message"]["id"], "text": "",
+            "attachments": [{"name": "image.png", "mime": "image/png", "data": "cGljdHVyZQ=="}],
+            "metadata": {"buttons": [["Continue"]], "message_id": "foreign"},
+        })
+        self.assertTrue(self.messages[-1]["ok"], self.messages[-1])
+        self.assertEqual(len(paths), 1)
+        self.assertFalse(paths[0].exists())
+
+    async def test_send_rejects_attachment_paths_before_calling_the_adapter(self):
+        async def deliver(_envelope):
+            self.fail("invalid attachment reached the adapter")
+
+        self.transport.deliver = deliver
+        await self.transport.inbound(self.msg)
+        await self.transport.send({
+            "requestId": "attachment", "messageId": self.messages[1]["message"]["id"], "text": "file",
+            "attachments": [{"name": "../private.png", "mime": "image/png", "data": "cGljdHVyZQ=="}],
+        })
+        self.assertEqual(self.messages[-1].get("code"), "invalid-reply")
+
+    async def test_authenticated_session_controls_round_trip_the_existing_session_requirement(self):
+        self.msg.require_existing_session = True
+        await self.transport.inbound(self.msg)
+        message = self.messages[-1]["message"]
+        self.assertTrue(message["requireExistingSession"])
+        self.assertEqual(message["threadId"], "slack:C1:1.0")
+        self.msg.sender_id = "U2"
+        await self.transport.inbound(self.msg)
+        self.assertEqual(len(self.messages), 2)
+
+    async def test_routes_are_isolated_between_instances(self):
+        more = []
+        first = Transport("slack", self.root, {"U1"}, self.messages.append, instance_id="first")
+        second = Transport("slack", self.root, {"U1"}, more.append, instance_id="second")
+        await first.inbound(self.msg)
+        await second.inbound(self.msg)
+        first_message = self.messages[-1]["message"]
+        self.assertEqual(first_message["instanceId"], "first")
+        self.assertNotEqual(first_message["id"], more[-1]["message"]["id"])
+
+        async def deliver(_envelope):
+            self.fail("route must not cross worker instances")
+
+        second.deliver = deliver
+        await second.send({
+            "requestId": "other", "messageId": first_message["id"], "route": first_message["route"],
+            "text": "answer",
+        })
+        self.assertEqual(more[-1].get("code"), "reply-route-invalid")
+
     async def test_platform_acceptance_waits_for_durable_ack(self):
         self.transport.require_ack = True
         pending = asyncio.create_task(self.transport.inbound(self.msg))
@@ -148,6 +213,127 @@ class ConfigAndAuthTest(unittest.TestCase):
 
 @unittest.skipUnless(os.getenv("DSH_TRANSPORT_SMOKE") == "1", "requires the pinned Python transport installation")
 class PinnedRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_wecom_preserves_native_reply_frame_but_proactive_send_has_no_frame(self):
+        from nanobot.bus.events import InboundMessage
+        from nanobot.bus.queue import MessageBus
+        from nanobot.channels.wecom.runtime import WecomChannel
+
+        events = []
+        transport = Transport("wecom", Path(tempfile.gettempdir()), {"sender"}, events.append)
+        channel = WecomChannel({}, MessageBus())
+        wire_runtime(transport, channel)
+        calls = []
+        frame, newer = {"req": "first"}, {"req": "current"}
+
+        async def send(message):
+            calls.append((channel._chat_frames.get("chat"), message.content))
+
+        channel.send = send
+        await transport.inbound(InboundMessage(
+            "wecom", "sender", "chat", "hello", metadata={"message_id": "origin"},
+        ), frame)
+        ingress = events[-1]["message"]
+        channel._chat_frames["chat"] = newer
+        await transport.send({
+            "requestId": "reply", "messageId": "turn-reply-key", "originId": ingress["id"], "text": "answer",
+        })
+        await transport.send({
+            "requestId": "proactive", "messageId": "timer", "route": ingress["route"], "text": "reminder",
+            "metadata": {"proactive": True},
+        })
+        self.assertEqual(calls, [(frame, "answer"), (None, "reminder")])
+        self.assertIs(channel._chat_frames["chat"], newer)
+
+    async def test_tool_update_keeps_approved_description_as_a_distinct_event(self):
+        from nanobot.bus.events import InboundMessage
+        from nanobot.bus.outbound_events import ProgressEvent
+        from nanobot.bus.queue import MessageBus
+        from nanobot.channels.feishu.runtime import FeishuChannel
+
+        events = []
+        transport = Transport("feishu", Path(tempfile.gettempdir()), {"sender"}, events.append)
+        channel = FeishuChannel({}, MessageBus())
+        wire_runtime(transport, channel)
+        calls = []
+
+        async def send(message):
+            calls.append(message)
+
+        channel.send = send
+        await transport.inbound(InboundMessage("feishu", "sender", "chat", "hello"))
+        await transport.send({
+            "requestId": "tool", "messageId": events[-1]["message"]["id"], "op": "update", "type": "tool",
+            "text": "Searching files", "metadata": {"message_id": "cannot override route"},
+        })
+        self.assertTrue(events[-1]["ok"])
+        self.assertEqual(calls[0].content, "Searching files")
+        self.assertEqual(calls[0].event, ProgressEvent(content="Searching files", tool_hint=True))
+        self.assertEqual(calls[0].metadata, {})
+
+    async def test_feishu_stream_finalizes_existing_reply_instead_of_sending_it_again(self):
+        from nanobot.bus.events import InboundMessage
+        from nanobot.bus.queue import MessageBus
+        from nanobot.channels.feishu.runtime import FeishuChannel
+
+        events = []
+        transport = Transport("feishu", Path(tempfile.gettempdir()), {"sender"}, events.append)
+        channel = FeishuChannel({"streaming": True}, MessageBus())
+        wire_runtime(transport, channel)
+        calls = []
+
+        async def delta(chat_id, text, metadata, *, stream_id, stream_end=False):
+            calls.append((chat_id, text, metadata["message_id"], stream_id, stream_end))
+
+        async def send(_message):
+            self.fail("streamed final text should be delivered through the existing stream")
+
+        channel.send = send
+        channel.send_delta = delta
+        await transport.inbound(InboundMessage(
+            "feishu", "sender", "chat", "hello", metadata={"message_id": "origin"},
+        ))
+        envelope = {"messageId": events[-1]["message"]["id"]}
+        await transport.send({**envelope, "requestId": "delta", "op": "update", "type": "delta", "text": "partial"})
+        await transport.send({**envelope, "requestId": "final", "op": "send", "text": "partial answer"})
+        self.assertEqual([event["ok"] for event in events if event["type"] == "sent"], [True, True])
+        stream_id = envelope["messageId"]
+        self.assertEqual(calls, [
+            ("chat", "partial", "origin", stream_id, False),
+            ("chat", " answer", "origin", stream_id, False),
+            ("chat", "", "origin", stream_id, True),
+        ])
+
+    async def test_retrying_stream_finalization_does_not_resend_the_suffix_or_full_answer(self):
+        from nanobot.bus.delivery import ChannelNotReadyError
+        from nanobot.bus.events import InboundMessage
+        from nanobot.bus.queue import MessageBus
+        from nanobot.channels.feishu.runtime import FeishuChannel
+
+        events = []
+        transport = Transport("feishu", Path(tempfile.gettempdir()), {"sender"}, events.append)
+        channel = FeishuChannel({"streaming": True}, MessageBus())
+        wire_runtime(transport, channel)
+        calls = []
+
+        async def delta(_chat_id, text, _metadata, *, stream_id, stream_end=False):
+            calls.append((text, stream_end))
+            if stream_end and calls.count(("", True)) == 1:
+                raise ChannelNotReadyError("reconnecting")
+
+        async def send(_message):
+            self.fail("retrying stream final must not send a separate final")
+
+        channel.send = send
+        channel.send_delta = delta
+        await transport.inbound(InboundMessage("feishu", "sender", "chat", "hello"))
+        envelope = {"messageId": events[-1]["message"]["id"]}
+        await transport.send({**envelope, "requestId": "delta", "op": "update", "type": "delta", "text": "partial"})
+        await transport.send({**envelope, "requestId": "first", "op": "send", "text": "partial answer"})
+        self.assertEqual(events[-1].get("code"), "channel-not-ready")
+        await transport.send({**envelope, "requestId": "retry", "op": "send", "text": "partial answer"})
+        self.assertTrue(events[-1]["ok"], events[-1])
+        self.assertEqual(calls, [("partial", False), (" answer", False), ("", True), ("", True)])
+
     async def test_constructs_and_routes_replies_with_each_pinned_channel_runtime(self):
         from nanobot.bus.queue import MessageBus
         from nanobot.channels.registry import discover_plugins

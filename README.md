@@ -1,6 +1,6 @@
 # DSH Channel Bridge
 
-DSH Channel Bridge 将消息渠道接入 **DeepSeek Harness**。在左侧栏的 **消息渠道** 中管理连接。微信沿用现有的 iLink 登录、批准关系和会话历史。Telegram 轮询与 WebSocket 由插件直接连接，其余渠道使用固定版本的 nanobot 平台传输。DSH 负责会话、模型和附件，外部消息会话默认禁用工具。
+DSH Channel Bridge 将消息渠道接入 **DeepSeek Harness**。在左侧栏的 **消息渠道** 中管理连接。微信沿用现有的 iLink 登录、批准关系和会话历史。Telegram 轮询与 WebSocket 由插件直接连接，其余渠道使用固定版本的 nanobot 平台传输。DSH 负责会话、模型和附件，所有渠道默认禁用 Agent 工具，可在每个渠道的「Agent 工具与回复」中单独授权。
 
 [渠道进度表和逐渠道使用说明](./docs/channels.md)列出了源码实际注册的全部 19 个渠道、平台设置、支持范围和验证状态。
 
@@ -18,6 +18,8 @@ pnpm test
 
 **复制或修改项目文件不会自动切换已安装插件的来源。** 更换现有实例的安装目录时，使用 DSH Plugin Manager 操作；不要手工覆盖 profile 配置或改动凭据文件，也不要为同一个微信机器人同时开启两个收件实例。
 
+更新已链接的本地插件后，重启 DSH 以载入新的插件模块和渠道预设。原有微信凭据、批准关系和会话由 DSH 继续保留。
+
 从 `@local/dsh-weixin-bridge` 迁移时，在插件管理器停用旧包并启用本插件。打开「消息渠道 → 微信」，确认现有的连接和批准关系后，即可卸载旧包。微信凭据和会话历史保存在 DSH profile 中。
 
 ## 微信 iLink
@@ -25,21 +27,21 @@ pnpm test
 1. 安装并启用此 bundle，刷新现有 DSH 页面，然后打开 **消息渠道 → 微信**。
 2. 点击 **显示登录二维码**，使用目标微信账号扫码并确认。如微信要求数字验证码，在同一面板输入。
 3. 从微信的机器人会话发送任意文本。机器人会发回 **8 位数字配对码**，有效期 10 分钟。
-4. 在 DSH 面板中对照请求的用户 ID，输入微信收到的配对码，点击 **仅批准本人**。不要批准其他人的码。
+4. 在 DSH 面板中对照请求的用户 ID，输入微信收到的配对码，确认发送者身份，点击 **批准发送者**。
 5. **重新从微信发送一条文本**，开始对话。批准前的消息只用于配对，不会交给模型，也不会在批准后自动重放。
 
-配对码最多允许 5 次错误尝试，之后需从微信发送新消息获取新码。同一时间只允许一个已批准用户。已有本人获批时，其他用户的新消息会被忽略。撤销后如需重新申请，必须从微信重新发消息并由本人再次批准。
+配对码最多允许 5 次错误尝试，之后需从微信发送新消息获取新码。每位获批用户使用独立的会话和发送上下文。撤销后如需重新申请，该用户须从微信重新发消息并由 DSH 所有者再次批准。
 
 首次使用前，请在 DSH 模型设置中选择可用的默认模型。新微信会话使用该默认模型；已有会话恢复时保持自己的模型选择。
 
-## 微信安全边界
+## 所有渠道的工具与权限
 
-- **仅聊天，禁用全部工具。** 新增 `weixin-bridge-chat` 专用预设：不挂载文件、命令、网络、安装或审批工具；使用作用域工具限制和不可放宽的执行 guard。Host 另有防御性 guard。恢复同一会话仍使用此预设。
-- 使用独立工作目录，不向微信会话注入已有桌面聊天历史。这个目录不是额外的 OS 沙箱；首版的主要安全边界是**不向该会话提供工具能力**。
+- 在渠道详情的 **Agent 工具与回复** 勾选允许的 DSH 工具。模型可见名单跟随本次已授权输入，工具执行仍通过 DSH 的一次性审批。未启用的工具不随请求发送。
+- 新会话分配各自的私有工作目录，并继续允许已有会话以原工作目录恢复。文件工具只接收指向对应私有目录的路径。开启 `channel_send` 后，Agent 可向当前已批准的聊天发送文本和私有工作目录里的附件。
 - 微信内容以普通用户消息接入，不能批准用户、开始扫码、恢复连接、修改权限或把自己提升为系统指令。
 - 扫码、验证码、批准、撤销与恢复操作只接受 DSH 本人已登录浏览器。HTTP 管理接口复用 DSH 的 Host/Origin/身份校验，并要求 JSON 和专用请求头；不是公开的微信回调。
 - token 与每用户 `context_token` 保存在 DSH 凭据服务中，不写普通插件配置，不返回给面板或模型。二维码只在已认证的管理面板显示，不进入管理工具结果。DSH 的凭据存储由安装版本提供，**本插件不额外承诺静态加密**；请保护本机 profile 和备份。
-- 只转发精确关联的微信输入所对应的、已完成轮次的最终文本。不转发 reasoning 块、工具日志、未完成/中断回答或其他会话的内容。
+- 默认转发对应渠道回合的最终答复。可按平台启用流式文字、处理进度或工具名称提示。微信保持推理内容私有。
 - 如果在该微信会话中从 DSH 手动发送或编辑了额外输入，该会话会被标记为污染，停止微信转发；下一条微信输入使用新的隔离会话，以免混入桌面端私人输入。可复制会话 ID 到 DSH 查阅历史；不要把它当作与桌面私人聊天共用的会话。
 
 ## 微信暂停、断开与恢复
@@ -57,17 +59,17 @@ pnpm test
 - 长回答分段发送，最多 4 段，每段不超过 1800 个 Unicode 码点。超出部分提示到 DSH 查看完整回答。
 - `context_token` 受限的回答暂存，收到新微信上下文后再尝试，已确认成功的分段不会重发。
 - 网络超时或进程退出可能使一次发送的结果无法确认。这种记录标记为“结果未确认”，**不盲目自动重发**，避免重复通知；请到 DSH 查看历史。不能承诺跨网络的 exactly-once 投递。
-- 每条输入最多 12000 个 Unicode 字符；每分钟最多接纳 10 条，待处理输入最多 20 条。待发队列有上界，并为已经开始生成的回答预留位置；满时停止启动新模型请求。
+- 每条输入最多 12000 个 Unicode 字符；每位用户每分钟最多接纳 10 条，待处理输入最多 20 条。待发队列有上界，并为已经开始生成的回答预留位置；满时停止启动新模型请求。
 - 消息去重保存最近 1000 个输入标识。正常增量游标在已接纳输入持久化后才推进。会话最终结果经过 DSH 的持久化 flush 后才进入待发队列。
 - 单次模型回复默认限时 180 秒。恢复已入模但中断的轮次不会盲目重新执行，会提示重新发送。
 
 ## 微信平台范围
 
-已批准的私聊发送者可上传图片、语音、文件或视频，单条消息附件合计最多 1 MiB。支持平台提供的语音文字，图片理解取决于所选 DSH 模型。桥接只回复文本。账号开通、扫码和会话范围由微信 iLink 决定。群聊、联系人管理、主动发信和群发不在此接口的接入范围内。
+已批准的私聊发送者可上传图片、语音、文件或视频，单条消息附件合计最多 1 MiB。支持平台提供的语音文字，图片理解取决于所选 DSH 模型。可以发送文本、图片、语音、视频和文件，出站附件单次合计最多 1 MiB。通过 `channel_send` 或绑定到当前会话的 DSH 自动化发送时，iLink 仍要求有效的发送上下文。账号开通、扫码和会话范围由微信 iLink 决定，群聊和群发暂不可用。
 
 ## 插件配置
 
-Bundle patch 安装 Host 插件、微信安全聊天预设和通用渠道安全聊天预设。省略 `workspaceDir` 时，在 DSH 提供的默认工作目录下创建单独的 `weixin-workspace` 目录，无须将开发者的用户名或本机绝对路径写入配置。仓库忽略同名运行目录，凭据与会话历史继续由 DSH profile 管理。
+Bundle patch 安装 Host 插件、微信安全聊天预设和通用渠道安全聊天预设。省略 `workspaceDir` 时优先沿用已批准微信会话的历史工作目录，否则以 DSH 默认工作目录创建 `weixin-workspace` 作为旧会话兼容路径。新会话使用 `channel-private-workspaces/<会话 ID>`。仓库忽略同名运行目录，凭据与会话历史继续由 DSH profile 管理。
 
 | 字段 | 默认/当前值 | 含义 |
 | --- | --- | --- |
@@ -106,10 +108,10 @@ ELECTRON_RUN_AS_NODE=1 "$DSH_NODE_EXECUTABLE" --test test/*.test.js
 - [通用渠道运行时](./lib/channel-bridge.js) 和[传输子进程](./transport/nanobot_worker.py)负责启停、去重、回复和凭据交接。
 - [消息渠道页面](./client.js)通过 DSH 左侧栏和主内容区扩展点显示配置、登录、审批和状态。
 
-原有微信协议参考 [nanobot 的微信渠道实现](https://github.com/HKUDS/nanobot/blob/7782095a85d24ded81a734fd79a3c9c32ae865b2/nanobot/channels/weixin/runtime.py)，并按其注明的 `@tencent-weixin/openclaw-weixin` v2.4.6 协议字段实现。未引入或运行 nanobot 的 Agent 进程。
+原有微信协议参考 [nanobot 的微信渠道实现](https://github.com/HKUDS/nanobot/blob/e76717445058f4670ac9299cc89f91504da2f5f2/nanobot/channels/weixin/runtime.py)，并按其注明的 `@tencent-weixin/openclaw-weixin` v2.4.6 协议字段实现。未引入或运行 nanobot 的 Agent 进程。
 
 ---
 
 ## English summary
 
-DSH Channel Bridge adds a **Message Channels** page to DeepSeek Harness. See the [channel matrix](./docs/channels.md) for the 19 upstream channels, configuration and verification status. The WeChat adapter retains its existing iLink account, approvals and DSH history. Use **Message Channels → WeChat** to sign in and approve your account. Platform credentials and retained login state use DSH's credential service. Channel conversations are isolated and tool-free.
+DSH Channel Bridge adds a **Message Channels** page to DeepSeek Harness. See the [channel matrix](./docs/channels.md) for the 19 upstream channels, configuration and verification status. The WeChat adapter retains its existing iLink account, approvals and DSH history. Use **Message Channels → WeChat** to sign in and approve your account. Platform credentials and retained login state use DSH's credential service. Channel sessions are isolated. Enable specific native DSH tools in a channel’s Agent tools and replies section. Each tool call requires DSH approval.

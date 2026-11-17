@@ -102,16 +102,100 @@ test('five wrong pairing attempts invalidate the code; a new inbound message iss
   assert.equal(f.bridge.state.users[0].status, 'approved');
 });
 
-test('only one approved user is allowed and other senders are ignored after binding', async () => {
+test('owner-approved WeChat users have distinct sessions, contexts, and input identities', async () => {
   const f = fixture();
-  await f.bridge.receive(raw('a', 'user-a'), f.account().id, f.signal); const a = f.code();
-  await f.bridge.receive(raw('b', 'user-b'), f.account().id, f.signal); const b = f.code();
-  await f.bridge.action('user.approve', { userId: 'user-a', code: a }, { user: true });
-  await assert.rejects(f.bridge.action('user.approve', { userId: 'user-b', code: b }, { user: true }), { code: 'ALREADY_APPROVED' });
-  const count = f.sends.length;
-  await f.bridge.receive(raw('c', 'user-c'), f.account().id, f.signal);
-  assert.equal(f.sends.length, count); assert.equal(f.runs.length, 0);
-  assert.equal(f.bridge.state.users.some(user => user.userId === 'user-c'), false);
+  await f.approve('user-a');
+  const oldSession = f.bridge.state.users[0].sessionId;
+  await f.bridge.initialize();
+  await f.approve('user-b');
+  const [alice, bob] = f.bridge.state.users;
+  assert.equal(alice.sessionId, oldSession);
+  assert.notEqual(alice.sessionId, bob.sessionId);
+  await f.bridge.receive(raw('same-platform-id', 'user-a', 'A', 'context-a'), f.account().id, f.signal);
+  await f.bridge.receive(raw('same-platform-id', 'user-b', 'B', 'context-b'), f.account().id, f.signal);
+  await f.bridge.receive(raw('c', 'user-c', 'unapproved'), f.account().id, f.signal);
+  assert.equal(f.bridge.state.users.find(user => user.userId === 'user-c').status, 'pending');
+  await f.runOnce();
+  assert.deepEqual(f.runs.map(({ userId, sessionId, text }) => [userId, sessionId, text]),
+    [['user-a', alice.sessionId, 'A'], ['user-b', bob.sessionId, 'B']]);
+  assert.equal(new Set(f.runs.map(run => run.id)).size, 2);
+  assert.deepEqual(f.sends.slice(-2).map(({ userId, contextToken }) => [userId, contextToken]),
+    [['user-a', 'context-a'], ['user-b', 'context-b']]);
+});
+
+test('expired pending registrations can be replaced without dropping the approved iLink context', async () => {
+  const f = fixture();
+  await f.approve('user-a');
+  const sessionId = f.bridge.state.users[0].sessionId;
+  for (let index = 0; index < 23; index++) {
+    await f.bridge.receive(raw('ask', `pending-${index}`), f.account().id, f.signal);
+  }
+  f.setTime(100000 + 11 * 60 * 1000);
+  await f.bridge.receive(raw('ask', 'new-pending'), f.account().id, f.signal);
+  assert.equal(f.bridge.state.users.length, 24);
+  assert.equal(f.bridge.state.users.find(user => user.userId === 'user-a').sessionId, sessionId);
+  assert.equal(f.bridge.state.users.find(user => user.userId === 'new-pending').status, 'pending');
+  assert.ok(f.account().contexts.some(context => context.userId === 'user-a'));
+});
+
+test('multi-user media, commands, proactive routing, and revocation are scoped to the sender', async () => {
+  const f = fixture({
+    admitAttachments: async inputs => inputs.map(({ name }) => ({ type: 'text', text: name })),
+  });
+  await f.approve('user-a');
+  await f.approve('user-b');
+  const original = Object.fromEntries(f.bridge.state.users.map(user => [user.userId, user.sessionId]));
+  const interrupted = [];
+  f.backend.interrupt = sessionId => { interrupted.push(sessionId); return true; };
+  await f.bridge.sendToSession(original['user-a'], { id: 'before-reset', text: 'Retired session' });
+  await f.bridge.receive(raw('stop', 'user-a', '/stop'), f.account().id, f.signal);
+  await f.bridge.receive(raw('new', 'user-a', '/new'), f.account().id, f.signal);
+  const [alice, bob] = f.bridge.state.users;
+  assert.deepEqual(interrupted, [original['user-a']]);
+  assert.notEqual(alice.sessionId, original['user-a']);
+  assert.equal(bob.sessionId, original['user-b']);
+  const media = (id, sender) => ({ ...raw(id, sender, ''), item_list: [
+    { type: 2, image_item: { media: { encrypt_query_param: sender } } },
+  ] });
+  f.client.downloadMedia = async files => {
+    const sender = new URL(files[0].urls[0]).searchParams.get('encrypted_query_param');
+    return [{ name: `${sender}.txt` }];
+  };
+  await f.bridge.receive(media('media-a', 'user-a'), f.account().id, f.signal, f.client);
+  await f.bridge.receive(media('media-b', 'user-b'), f.account().id, f.signal, f.client);
+  await f.runOnce();
+  assert.equal(f.sends.some(send => send.text === 'Retired session'), false);
+  assert.deepEqual(f.runs.map(({ sessionId, content }) => [sessionId, content[0].text]),
+    [[alice.sessionId, 'user-a.txt'], [bob.sessionId, 'user-b.txt']]);
+  assert.equal(await f.bridge.sendToSession(original['user-a'], { id: 'old', text: 'past session' }), false);
+  await f.bridge.sendToSession(alice.sessionId, { id: 'same-task-id', text: 'A only' });
+  await f.bridge.sendToSession(bob.sessionId, { id: 'same-task-id', text: 'B only' });
+  await f.bridge.receive(raw('again', 'user-b', 'still approved'), f.account().id, f.signal);
+  await f.bridge.action('user.revoke', { userId: 'user-a' }, { user: true });
+  assert.equal(f.bridge.isApproved('user-a'), false);
+  assert.equal(await f.bridge.sendToSession(alice.sessionId, { id: 'revoked', text: 'refused' }), false);
+  assert.equal(f.bridge.state.users[1].sessionId, bob.sessionId);
+  assert.deepEqual(f.account().contexts.map(context => context.userId), ['user-b']);
+  await f.runOnce();
+  assert.equal(f.sends.some(send => send.text === 'A only'), false);
+  assert.equal(f.sends.find(send => send.text === 'B only').userId, 'user-b');
+  assert.equal(f.runs.at(-1).sessionId, bob.sessionId);
+});
+
+test('a full outgoing queue does not prevent a scoped stop command or reject the poll batch', async () => {
+  const f = fixture();
+  await f.approve();
+  const user = f.bridge.state.users[0];
+  const interrupted = [];
+  f.backend.interrupt = sessionId => { interrupted.push(sessionId); return true; };
+  let queued = true;
+  for (let index = 0; queued && index < 30; index++) {
+    queued = await f.bridge.sendToSession(user.sessionId, { id: `job-${index}`, text: 'scheduled' });
+  }
+  assert.equal(queued, false);
+  await f.bridge.receive(raw('full-stop', user.userId, '/stop'), f.account().id, f.signal);
+  assert.deepEqual(interrupted, [user.sessionId]);
+  assert.ok(f.bridge.state.seen.includes(inputKey(f.account().id, user.userId, 'full-stop')));
 });
 
 test('duplicate input is durably deduplicated before it can be enqueued a second time', async () => {
@@ -182,6 +266,107 @@ test('a multipart reply does not resend completed parts after context restrictio
   await f.bridge.setContext(f.account().id, 'wx-owner', 'ctx-fresh'); await f.bridge.deliver(f.signal);
   assert.equal(f.sends.slice(-2).some(send => send.clientId === firstId), false);
   assert.equal(f.bridge.state.outbox[0].state, 'sent');
+});
+
+test('attachments are durably queued alongside final text and resume after a context restriction', async () => {
+  const f = fixture();
+  await f.approve();
+  const attachment = { name: 'report.pdf', mime: 'application/pdf', data: 'YXJ0aWZhY3Q=' };
+  f.backend.run = async () => ({ state: 'completed', text: 'Report attached.', attachments: [attachment] });
+  const sends = [];
+  f.client.sendMedia = async value => {
+    sends.push(value);
+    assert.deepEqual(value.file, attachment);
+    if (sends.length === 1) throw Object.assign(new Error('restricted'), { kind: 'context' });
+  };
+  await f.bridge.receive(raw('m2'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(f.sends.at(-1).text, 'Report attached.');
+  assert.equal(f.persisted().outbox[0].state, 'blocked');
+  assert.equal(JSON.stringify(f.persisted().outbox[0]).includes(attachment.data), true);
+  await f.bridge.setContext(f.account().id, 'wx-owner', 'ctx-fresh');
+  await f.bridge.deliver(f.signal);
+  assert.equal(sends.length, 2);
+  assert.equal(sends[1].clientId, sends[0].clientId);
+  assert.equal(f.sends.filter(send => send.text === 'Report attached.').length, 1);
+  assert.equal(f.persisted().outbox[0].state, 'sent');
+  assert.equal(JSON.stringify(f.persisted().outbox[0]).includes(attachment.data), false);
+});
+
+test('WeChat proactive send delivers all four attachments allowed by the Agent tool', async () => {
+  const f = fixture();
+  await f.approve();
+  const user = f.bridge.state.users[0];
+  const attachments = [1, 2, 3, 4].map(index => ({ name: `report-${index}.txt`, mime: 'text/plain', data: 'eA==' }));
+  const sent = [];
+  f.client.sendMedia = async ({ file, userId }) => { sent.push({ file, userId }); };
+  assert.equal(await f.bridge.sendToSession(user.sessionId, { id: 'files', text: 'For you.', attachments }), true);
+  await f.bridge.deliver(f.signal);
+  assert.deepEqual(sent, attachments.map(file => ({ file, userId: user.userId })));
+});
+
+test('WeChat clears its typing indicator after finalizing a turn', async () => {
+  const f = fixture();
+  await f.approve();
+  const typing = [];
+  f.client.getConfig = async () => ({ typing_ticket: 'ticket' });
+  f.client.sendTyping = async args => { typing.push(args); };
+  f.backend.run = async () => {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typing[0]?.status, 1);
+    return { state: 'completed', text: 'Ready.' };
+  };
+  await f.bridge.receive(raw('m2'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.deepEqual(typing.map(({ status, typingTicket, userId }) => [status, typingTicket, userId]),
+    [[1, 'ticket', 'wx-owner'], [2, 'ticket', 'wx-owner']]);
+  assert.equal(f.sends.at(-1).text, 'Ready.');
+});
+
+test('opt-in WeChat progress and streamed reply leave only the unsent tail in the final reply', async () => {
+  const f = fixture({ deliveryOptions: () => ({ blockStreaming: true, sendProgress: true, sendToolHints: true }) });
+  await f.approve();
+  const prefix = '文'.repeat(1200);
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await onUpdate({ type: 'progress', text: 'Working.' });
+    await onUpdate({ type: 'tool', text: 'Tool finished.' });
+    await onUpdate({ type: 'reasoning', text: 'hidden' });
+    await onUpdate({ type: 'delta', text: `  ${prefix.slice(0, 600)}` });
+    await onUpdate({ type: 'delta', text: prefix.slice(600) });
+    assert.equal(f.sends.at(-1).text, prefix);
+    return { state: 'completed', text: prefix + 'Final tail.' };
+  };
+  await f.bridge.receive(raw('m2'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.deepEqual(f.sends.slice(1).map(send => send.text), ['Working.', 'Tool finished.', prefix, 'Final tail.']);
+});
+
+test('resuming a turn with an ambiguous streamed block sends the final tail only', async () => {
+  const f = fixture({ deliveryOptions: () => ({ blockStreaming: true }) });
+  await f.approve();
+  const prefix = '文'.repeat(1200);
+  const shutdown = new AbortController();
+  let attempted;
+  const sendText = f.client.sendText;
+  f.client.sendText = async value => {
+    if (value.text !== prefix) return sendText(value);
+    attempted = value.clientId;
+    throw Object.assign(new Error('connection lost after write'), { kind: 'network' });
+  };
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await onUpdate({ type: 'delta', text: prefix });
+    shutdown.abort();
+    throw new Error('DSH exited');
+  };
+  await f.bridge.receive(raw('m2'), f.account().id, f.signal);
+  await f.bridge.work(shutdown.signal);
+  assert.ok(attempted);
+  assert.equal(f.persisted().inbox[0].streamedPrefix, prefix);
+  f.client.sendText = sendText;
+  f.backend.run = async () => ({ state: 'completed', text: prefix + 'Tail after restart.' });
+  await f.bridge.initialize();
+  await f.runOnce();
+  assert.deepEqual(f.sends.slice(1).map(send => send.text), ['Tail after restart.']);
 });
 
 test('stale context attempts getconfig refresh before sending', async () => {

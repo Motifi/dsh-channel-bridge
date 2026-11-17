@@ -19,6 +19,7 @@ import tempfile
 import time
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from importlib import metadata as package_metadata
@@ -27,6 +28,7 @@ from urllib.parse import urlsplit
 MAX_FRAME = 8 * 1024 * 1024
 MAX_AUTH_STATE = 2 * 1024 * 1024
 MAX_MEDIA_BYTES = 1024 * 1024
+MAX_REPLY_MEDIA_BYTES = 4 * 1024 * 1024
 MAX_TEXT = 64 * 1024
 MAX_ROUTES = 512
 MAX_ROUTE_AGE = 30 * 60
@@ -42,7 +44,7 @@ ROUTE_KEYS = {
     "root_id", "thread_id", "message_thread_id", "is_group", "group_id", "wa_id",
     "reply_in_thread", "reply_to_message_id", "subject", "topic_id", "sender_number",
     "receive_id_type", "thread_root_id", "quoted_msg_id", "sender_name",
-    "thread_root_event_id", "thread_reply_to_event_id", "parent_id",
+    "thread_root_event_id", "thread_reply_to_event_id", "parent_id", "callback_query_id",
 }
 ROUTE_GROUPS = {
     "linear": {
@@ -65,6 +67,13 @@ class WorkerError(Exception):
         self.code = code
         self.status = status
         super().__init__(code)
+
+
+@dataclass
+class ReplyStream:
+    id: str
+    text: str = ""
+    closed: bool = False
 
 
 def attach_files(root, paths):
@@ -94,6 +103,47 @@ def attach_files(root, paths):
     return attachments
 
 
+def stage_reply_files(directory, attachments):
+    if not isinstance(attachments, list) or len(attachments) > 8:
+        raise ValueError("invalid attachments")
+    paths = []
+    remaining = MAX_REPLY_MEDIA_BYTES
+    for index, file in enumerate(attachments):
+        if not isinstance(file, dict):
+            raise ValueError("invalid attachment")
+        name, mime, data = file.get("name"), file.get("mime"), file.get("data")
+        if (
+            not isinstance(name, str) or not 0 < len(name.encode("utf-8")) <= 230
+            or name.endswith((" ", ".")) or re.search(r'[<>:"/\\|?*\x00-\x1f\x7f]', name)
+            or re.fullmatch(r"(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])", name.split(".")[0])
+            or not isinstance(mime, str) or not re.fullmatch(r"[\w.+-]+/[\w.+-]+", mime)
+            or not isinstance(data, str) or len(data) > ((remaining + 2) // 3) * 4
+        ):
+            raise ValueError("invalid attachment")
+        content = base64.b64decode(data, validate=True)
+        if not 0 < len(content) <= remaining:
+            raise ValueError("invalid attachment size")
+        remaining -= len(content)
+        folder = directory / str(index)
+        folder.mkdir(mode=0o700)
+        path = folder / name
+        path.write_bytes(content)
+        paths.append(str(path))
+    return paths
+
+
+def reply_buttons(options):
+    rows = options.get("buttons", [])
+    if (
+        not isinstance(rows, list) or len(rows) > 8
+        or any(not isinstance(row, list) or len(row) > 8
+               or any(not isinstance(label, str) or not 0 < len(label) <= 200 for label in row)
+               for row in rows)
+    ):
+        raise ValueError("invalid buttons")
+    return rows
+
+
 def safe_route_metadata(value):
     if not isinstance(value, dict):
         return {}
@@ -115,7 +165,7 @@ def safe_route_metadata(value):
 
 def stable_id(channel, sender, chat, metadata):
     event_id = (
-        metadata.get("message_id") or metadata.get("event_id")
+        metadata.get("callback_query_id") or metadata.get("message_id") or metadata.get("event_id")
         or metadata.get("msteams", {}).get("activity_id")
         or metadata.get("linear", {}).get("delivery_id")
         or metadata.get("uid") or metadata.get("timestamp")
@@ -210,8 +260,9 @@ def config_for_runtime(channel, section, allowed):
 
 
 class Transport:
-    def __init__(self, channel, root, allowed, emit, *, require_ack=False):
+    def __init__(self, channel, root, allowed, emit, *, require_ack=False, instance_id=None):
         self.channel = channel
+        self.instance_id = instance_id
         self.root = root.resolve()
         self.allowed = allowed
         self.emit = emit
@@ -220,6 +271,7 @@ class Transport:
         self.deliver = None
         self.require_ack = require_ack
         self.pending = {}
+        self.streams = OrderedDict()
 
     def set_status(self, status, code=None):
         if self.status == (status, code):
@@ -229,8 +281,8 @@ class Transport:
 
     async def inbound(self, msg, native_route=None):
         if (
-            msg.channel != self.channel or str(msg.sender_id) not in self.allowed
-            or msg.input_role not in (None, "user") or msg.require_existing_session
+            msg.channel not in {self.channel, self.runtime_name} or str(msg.sender_id) not in self.allowed
+            or msg.input_role not in (None, "user")
             or not msg.chat_id or len(msg.chat_id) > 2048
         ):
             return
@@ -241,7 +293,9 @@ class Transport:
             if isinstance(event, dict) and isinstance(event.get("ts"), str):
                 metadata["message_id"] = event["ts"][:128]
         route = {"chatId": msg.chat_id, "senderId": str(msg.sender_id), "metadata": metadata}
-        message_id = stable_id(self.channel, route["senderId"], msg.chat_id, metadata)
+        if self.instance_id is not None:
+            route["instanceId"] = self.instance_id
+        message_id = stable_id(self.runtime_name, route["senderId"], msg.chat_id, metadata)
         self.routes.pop(message_id, None)
         self.routes[message_id] = (time.monotonic(), route, native_route)
         if len(self.routes) > MAX_ROUTES:
@@ -252,6 +306,11 @@ class Transport:
             "text": str(msg.content).replace(str(self.root), "[channel attachment]")[:MAX_TEXT],
             "route": route,
         }
+        if self.instance_id is not None:
+            message["instanceId"] = self.instance_id
+        mattermost = metadata.get("mattermost", {})
+        if msg.require_existing_session or metadata.get("callback_query_id") or mattermost.get("is_action") is True:
+            message["requireExistingSession"] = True
         if isinstance(msg.session_key_override, str):
             message["threadId"] = msg.session_key_override[:2048]
         attachments = attach_files(self.root, msg.media or [])
@@ -278,6 +337,10 @@ class Transport:
             if not ack.done():
                 ack.cancel()
 
+    @property
+    def runtime_name(self):
+        return f"{self.channel}.{self.instance_id}" if self.instance_id is not None else self.channel
+
     def acknowledge(self, command):
         message_id = command.get("messageId")
         if isinstance(message_id, str):
@@ -293,10 +356,20 @@ class Transport:
             return
         def sent(ok, code=None):
             self.emit({"type": "sent", "requestId": req, "ok": ok, **({"code": code} if code else {})})
-        if not isinstance(message_id, str) or not isinstance(text, str) or not 0 < len(text) <= MAX_TEXT:
+        attachments = command.get("attachments", [])
+        options = command.get("metadata") or {}
+        update = command.get("type") if command.get("op") == "update" else None
+        if (
+            not isinstance(message_id, str) or not 0 < len(message_id) <= 512
+            or not isinstance(text, str) or len(text) > MAX_TEXT
+            or not isinstance(options, dict) or not isinstance(attachments, list)
+            or (command.get("op") == "update" and update not in ("delta", "progress", "tool", "reasoning"))
+            or (update is not None and (not text or attachments))
+        ):
             sent(False, "invalid-reply")
             return
-        cached = self.routes.get(message_id)
+        origin_id = command.get("originId")
+        cached = self.routes.get(origin_id if isinstance(origin_id, str) else message_id)
         recent = cached and time.monotonic() - cached[0] < MAX_ROUTE_AGE
         route = cached[1] if recent else command.get("route")
         if not self.deliver or not isinstance(route, dict):
@@ -304,22 +377,42 @@ class Transport:
             return
         sender_id = route.get("senderId")
         chat_id = route.get("chatId")
-        if not isinstance(sender_id, str) or sender_id not in self.allowed or not isinstance(chat_id, str) or not 0 < len(chat_id) <= 2048:
+        if (
+            route.get("instanceId") != self.instance_id
+            or not isinstance(sender_id, str) or sender_id not in self.allowed
+            or not isinstance(chat_id, str) or not 0 < len(chat_id) <= 2048
+        ):
             sent(False, "reply-route-invalid")
             return
-        try:
-            await asyncio.wait_for(self.deliver({
-                "chatId": chat_id, "metadata": safe_route_metadata(route.get("metadata")), "text": text,
-                "nativeRoute": cached[2] if recent else None,
-            }), timeout=45)
-        except Exception as exc:
-            code = {
-                "DeliveryRejectedError": "delivery-rejected",
-                "ChannelNotReadyError": "channel-not-ready",
-            }.get(type(exc).__name__, "delivery-uncertain")
-            sent(False, code)
-        else:
-            sent(True)
+        with contextlib.ExitStack() as stack:
+            try:
+                buttons = reply_buttons(options) if update is None else []
+                if not text and not attachments and not any(buttons):
+                    raise ValueError("empty reply")
+                media = []
+                if attachments:
+                    folder = stack.enter_context(tempfile.TemporaryDirectory(prefix="reply-", dir=self.root))
+                    media = stage_reply_files(Path(folder), attachments)
+            except (ValueError, OSError):
+                sent(False, "invalid-reply")
+                return
+            try:
+                await asyncio.wait_for(self.deliver({
+                    "messageId": message_id, "chatId": chat_id, "text": text,
+                    "metadata": safe_route_metadata(route.get("metadata")),
+                    "nativeRoute": cached[2] if recent else None,
+                    "options": options, "media": media, "buttons": buttons, "update": update,
+                }), timeout=45)
+            except Exception as exc:
+                code = {
+                    "DeliveryRejectedError": "delivery-rejected",
+                    "ChannelNotReadyError": "channel-not-ready",
+                }.get(type(exc).__name__, "delivery-uncertain")
+                sent(False, code)
+            else:
+                if update is None:
+                    self.streams.pop(message_id, None)
+                sent(True)
 
 
 # A started task is not a connection. These callbacks or live properties are
@@ -355,6 +448,8 @@ def wire_runtime(transport, channel):
     from loguru import logger
     from nanobot.bus.delivery import DeliveryRejectedError
     from nanobot.bus.events import InboundMessage, OutboundMessage
+    from nanobot.bus.outbound_events import ProgressEvent
+    from nanobot.channels.base import BaseChannel
 
     upstream_is_allowed = channel.is_allowed
 
@@ -372,12 +467,14 @@ def wire_runtime(transport, channel):
     async def handle_message(sender_id, chat_id, content, media=None, metadata=None,
                              session_key=None, is_dm=False, authorization_id=None,
                              require_existing_session=False, session_generation=None):
-        if str(sender_id) not in transport.allowed or require_existing_session:
+        if str(sender_id) not in transport.allowed:
             return False
         if authorization_id is not None and not is_allowed(authorization_id):
             return False
         native_route = None
         metadata = dict(metadata or {})
+        if metadata.get("is_callback") is True:
+            require_existing_session = True
         if transport.channel == "msteams":
             with channel._refs_guard:
                 ref = channel._conversation_refs.get(str(chat_id))
@@ -390,9 +487,9 @@ def wire_runtime(transport, channel):
         elif transport.channel == "wecom":
             native_route = channel._chat_frames.get(str(chat_id))
         await transport.inbound(InboundMessage(
-            channel=transport.channel, sender_id=str(sender_id), chat_id=str(chat_id),
+            channel=channel.name, sender_id=str(sender_id), chat_id=str(chat_id),
             content=content, media=media or [], metadata=metadata,
-            session_key_override=session_key,
+            session_key_override=session_key, require_existing_session=require_existing_session,
         ), native_route)
         return True
 
@@ -402,6 +499,51 @@ def wire_runtime(transport, channel):
 
     async def deliver(route):
         chat, metadata = route["chatId"], route["metadata"]
+        update = route["update"]
+        text = route["text"]
+        options = route["options"]
+        message_id = route["messageId"]
+        if route["media"] and transport.channel in {"mochat", "msteams"}:
+            raise DeliveryRejectedError("This adapter cannot upload a local attachment")
+        stream_id = options.get("streamId")
+        if not isinstance(stream_id, str) or not 0 < len(stream_id) <= 200:
+            stream_id = message_id
+        if update == "delta":
+            if type(channel).send_delta is not BaseChannel.send_delta:
+                stream = transport.streams.get(message_id) or ReplyStream(stream_id)
+                if stream.closed:
+                    return
+                await channel.send_delta(chat, text, metadata, stream_id=stream.id)
+                stream.text = (stream.text + text)[:MAX_TEXT]
+                transport.streams[message_id] = stream
+                transport.streams.move_to_end(message_id)
+                if len(transport.streams) > MAX_ROUTES:
+                    transport.streams.popitem(last=False)
+            return
+        if update == "reasoning":
+            message = OutboundMessage(
+                channel=channel.name, chat_id=chat, content=text, metadata=metadata,
+                event=ProgressEvent(content=text, reasoning=True, stream_id=stream_id),
+            )
+            await channel.send_reasoning(message)
+            return
+        event = None
+        if update in ("progress", "tool"):
+            event = ProgressEvent(content=text, tool_hint=update == "tool")
+        elif message_id in transport.streams:
+            stream = transport.streams[message_id]
+            streamed = stream.text.lstrip()
+            complete = text.rstrip() == streamed.rstrip() or text.startswith(streamed)
+            if not stream.closed:
+                if text.startswith(streamed) and text != streamed:
+                    await channel.send_delta(chat, text[len(streamed):], metadata, stream_id=stream.id)
+                    stream.text = text
+                await channel.send_delta(chat, "", metadata, stream_id=stream.id, stream_end=True)
+                stream.closed = True
+            if complete:
+                text = ""
+                if not route["media"] and not any(route["buttons"]):
+                    return
         if transport.channel == "email":
             # Email keeps reply headers by sender. Restore them per message so
             # interleaved messages cannot pick up a newer email's headers.
@@ -414,9 +556,14 @@ def wire_runtime(transport, channel):
         reply_to = None
         if transport.channel == "mochat" and metadata.get("message_id"):
             reply_to = str(metadata["message_id"])
+        buttons = route["buttons"]
+        if any(buttons) and transport.channel not in {"linear", "slack", "telegram"}:
+            labels = "\n".join(" ".join(f"[{label}]" for label in line) for line in buttons if line)
+            text = "\n\n".join(part for part in (text, labels) if part)
+            buttons = []
         message = OutboundMessage(
-            channel=transport.channel, chat_id=chat, content=route["text"],
-            metadata=metadata, reply_to=reply_to,
+            channel=channel.name, chat_id=chat, content=text, metadata=metadata, reply_to=reply_to,
+            media=route["media"], buttons=buttons, event=event,
         )
         if transport.channel == "msteams":
             from nanobot.channels.msteams.runtime import ConversationRef
@@ -434,28 +581,29 @@ def wire_runtime(transport, channel):
             with channel._refs_guard:
                 channel._conversation_refs[chat] = ref
         if transport.channel == "wecom":
-            frame = route["nativeRoute"]
-            if frame is None:
+            proactive = options.get("proactive") is True
+            frame = None if proactive else route["nativeRoute"]
+            if frame is None and not proactive:
                 raise DeliveryRejectedError("WeCom message-scoped reply context expired")
             previous = channel._chat_frames.get(chat)
-            channel._chat_frames[chat] = frame
+            if frame is not None:
+                channel._chat_frames[chat] = frame
+            else:
+                channel._chat_frames.pop(chat, None)
             try:
                 await channel.send(message)
             finally:
                 if channel._chat_frames.get(chat) is frame:
-                    if previous is None:
-                        channel._chat_frames.pop(chat, None)
-                    else:
+                    if previous is not None:
                         channel._chat_frames[chat] = previous
+                    else:
+                        channel._chat_frames.pop(chat, None)
             return
         await channel.send(message)
 
     channel.is_allowed = is_allowed
     channel._handle_message = handle_message
     channel.transcribe_audio = no_transcription
-    channel.send_progress = False
-    channel.send_tool_hints = False
-    channel.show_reasoning = False
     transport.deliver = deliver
 
     name = transport.channel
@@ -688,6 +836,8 @@ async def channel_runtime(transport, startup):
         bus.publish_inbound = transport.inbound
         options = {"network": network} if cls.uses_shared_proxy else {}
         channel = cls(section, bus, **options)
+        if transport.instance_id is not None:
+            channel.name = transport.runtime_name
     except ImportError as exc:
         raise WorkerError("channel-dependencies-missing") from exc
     except (TypeError, ValueError) as exc:
@@ -785,7 +935,16 @@ async def run(channel, root, emit):
         or not all(isinstance(sender, str) and 0 < len(sender) <= 2048 and sender != "*" for sender in allowed)
     ):
         raise WorkerError("invalid-channel-configuration")
-    transport = Transport(channel, root, frozenset(allowed), emit, require_ack=True)
+    instance_id = startup.get("instanceId")
+    if instance_id is not None and (
+        channel != "feishu" or not isinstance(instance_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", instance_id)
+    ):
+        raise WorkerError("invalid-channel-configuration")
+    transport = Transport(
+        channel, root, frozenset(allowed), emit, require_ack=True,
+        instance_id=instance_id,
+    )
     transport.set_status("connecting")
     lifecycle = asyncio.create_task(channel_runtime(transport, startup))
     next_command = asyncio.create_task(queue.get())
@@ -806,7 +965,7 @@ async def run(channel, root, emit):
                 command = next_command.result()
                 if command is None or command.get("op") == "stop":
                     break
-                if command.get("op") == "send":
+                if command.get("op") in ("send", "update"):
                     if dispatch:
                         emit({"type": "sent", "requestId": command.get("requestId"), "ok": False, "code": "send-busy"})
                     else:
