@@ -183,19 +183,15 @@ window.__ModuleLoader__.load({
         "channels.uncertain": "Delivery could not be confirmed for {count} replies. Check the DSH conversation before resending.",
         "channels.configBeforeAccess": "Save the channel configuration first.",
         "channels.accessBeforeConnect": "Add an allowed sender before connecting.",
-        "features.title": "Agent tools and replies",
-        "features.tools": "Allowed DSH tools",
-        "features.toolsHint": "Tools start disabled. Each selected tool still requires approval through DSH before it runs.",
-        "features.noTools": "No eligible tools are registered in DSH.",
-        "features.replies": "Reply options",
+        "features.title": "Reply options",
         "features.repliesHint": "Options take effect on platforms that support the corresponding delivery mode.",
         "features.streaming": "Stream reply text",
         "features.sendProgress": "Send progress",
         "features.sendToolHints": "Send tool activity",
         "features.showReasoning": "Share reasoning",
-        "features.save": "Save tools and replies",
+        "features.save": "Save reply options",
         "features.unchanged": "Make a change to save.",
-        "features.saved": "Tools and reply options saved.",
+        "features.saved": "Reply options saved.",
         "features.openSession": "Open DSH conversation",
         "features.sessions": "Channel conversations",
         "features.sessionHint": "Open a conversation to review its replies or approve a pending tool call."
@@ -375,19 +371,15 @@ window.__ModuleLoader__.load({
         "channels.uncertain": "有 {count} 条回复的送达情况无法确认。重新发送前，请先查看 DSH 会话。",
         "channels.configBeforeAccess": "请先保存渠道配置。",
         "channels.accessBeforeConnect": "请先添加允许的发送者。",
-        "features.title": "Agent 工具与回复",
-        "features.tools": "允许的 DSH 工具",
-        "features.toolsHint": "工具默认关闭。勾选的工具仍须在 DSH 中获得本次批准后才能执行。",
-        "features.noTools": "DSH 尚未注册可用的工具。",
-        "features.replies": "回复选项",
+        "features.title": "回复选项",
         "features.repliesHint": "选项是否生效取决于平台支持的发送方式。",
         "features.streaming": "流式回复",
         "features.sendProgress": "发送处理进度",
         "features.sendToolHints": "发送工具调用提示",
         "features.showReasoning": "发送推理内容",
-        "features.save": "保存工具和回复选项",
+        "features.save": "保存回复选项",
         "features.unchanged": "修改选项后即可保存。",
-        "features.saved": "已保存工具和回复选项。",
+        "features.saved": "已保存回复选项。",
         "features.openSession": "打开 DSH 会话",
         "features.sessions": "渠道会话",
         "features.sessionHint": "打开对应会话可查看回复，或处理等待批准的工具调用。"
@@ -543,14 +535,10 @@ window.__ModuleLoader__.load({
 
     function validChannelSnapshot(value) {
       return Boolean(value && Array.isArray(value.channels)
-        && (value.toolChoices === undefined || (Array.isArray(value.toolChoices)
-          && value.toolChoices.every(name => typeof name === 'string')))
         && value.channels.every(channel => channel && typeof channel.id === 'string'
           && /^[a-z][a-z0-9_-]{0,63}$/.test(channel.id) && typeof channel.name === 'string'
           && CONNECTION_STATES.has(channel.status) && typeof channel.configured === 'boolean'
           && typeof channel.enabled === 'boolean' && Array.isArray(channel.allowedSenders)
-          && (channel.preferences?.allowedTools === undefined || (Array.isArray(channel.preferences.allowedTools)
-            && channel.preferences.allowedTools.every(name => typeof name === 'string')))
           && channel.allowedSenders.every(sender => typeof sender === 'string'))
         && new Set(value.channels.map(channel => channel.id)).size === value.channels.length);
     }
@@ -838,7 +826,7 @@ window.__ModuleLoader__.load({
 .wxb-row:hover,.wxb-row:focus-visible{background:var(--dsw-alias-bg-layer-2)}.wxb-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .wxb-subhead{margin-block:16px 2px}.wxb-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:14px}
 .wxb-field .wxb-channel-input{width:100%}.wxb-field textarea.wxb-channel-input{height:auto;min-height:72px;resize:vertical}
-.wxb-choices{min-width:0;margin:0;padding:0;border:0}.wxb-choices legend{padding:0;font-weight:600}.wxb-choices p{margin:5px 0 9px}.wxb-tool-grid{display:flex;flex-wrap:wrap;gap:8px 16px}.wxb-tool-grid label{display:inline-flex;align-items:center;gap:5px}.wxb-tool-grid input{accent-color:var(--dsw-alias-label-primary)}
+.wxb-choices{min-width:0;margin:0;padding:0;border:0}.wxb-choices p{margin:5px 0 9px}.wxb-reply-options{display:flex;flex-wrap:wrap;gap:8px 16px}.wxb-reply-options label{display:inline-flex;align-items:center;gap:5px}.wxb-reply-options input{accent-color:var(--dsw-alias-label-primary)}
 .wxb-link{color:var(--dsw-alias-brand-primary)}
 @media(hover:hover){.wxb-button:not(:disabled):hover{background:var(--dsw-alias-bg-layer-2)}.wxb-crumb:hover{color:var(--dsw-alias-label-primary)}}
 @media(max-width:520px){.wxb{padding-top:4px}.wxb-qrrow{gap:14px}.wxb-qr{width:184px;height:184px}.wxb-qrtext{flex-basis:100%}.wxb-details{grid-template-columns:minmax(0,1fr);gap:2px}.wxb-details dd{margin-bottom:8px}.wxb-head>div{flex-basis:100%}.wxb-row{grid-template-columns:minmax(0,1fr) auto}}
@@ -1338,17 +1326,14 @@ window.__ModuleLoader__.load({
                   busy: state.busy === 'configure' }))));
         }
 
-        function ChannelFeatures({ channel, store, state }) {
-          const configured = channel.preferences ?? {};
+        function ChannelReplyOptions({ channel, store, state }) {
           const [draft, setDraft] = React.useState(null);
           const [saved, setSaved] = React.useState(false);
           const options = channel.replyOptions ?? [];
-          const names = [...new Set([...(state.snapshot?.toolChoices ?? []), ...(configured.allowedTools ?? [])])];
-          const current = draft ?? configured;
-          const granted = current.allowedTools ?? [];
+          if (!options.length) return null;
           const reason = !state.online ? t('disabled.offline') : state.busy ? t('disabled.busy')
             : state.permission ? t(state.permission) : !state.snapshot || state.transportError || state.uncertain ? t('disabled.stale') : null;
-          function set(key, value) { setDraft(previous => ({ ...(previous ?? configured), [key]: value })); setSaved(false); }
+          function set(key, value) { setDraft(previous => ({ ...previous, [key]: value })); setSaved(false); }
           async function save(event) {
             event.preventDefault();
             if (!draft || reason) return;
@@ -1357,17 +1342,11 @@ window.__ModuleLoader__.load({
           return h('section', { className: 'wxb-section' },
             h('h3', null, t('features.title')),
             h('form', { className: 'wxb-stack', onSubmit: save },
-              h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
-                h('legend', null, t('features.tools')), h('p', { className: 'wxb-muted' }, t('features.toolsHint')),
-                names.length ? h('div', { className: 'wxb-tool-grid' }, ...names.map(name =>
-                  h('label', { key: name }, h('input', { type: 'checkbox', checked: granted.includes(name),
-                    onChange: event => set('allowedTools', event.target.checked ? [...granted, name] : granted.filter(tool => tool !== name)) }),
-                  h('code', null, name)))) : h('p', { className: 'wxb-muted' }, t('features.noTools'))),
-              options.length ? h('fieldset', { className: 'wxb-choices', disabled: Boolean(reason) },
-                h('legend', null, t('features.replies')), h('p', { className: 'wxb-muted' }, t('features.repliesHint')),
-                h('div', { className: 'wxb-tool-grid' }, ...options.map(key => h('label', { key },
-                  h('input', { type: 'checkbox', checked: current[key] ?? channel.replyDefaults?.[key] ?? false,
-                    onChange: event => set(key, event.target.checked) }), t(`features.${key}`))))) : null,
+              h('fieldset', { className: 'wxb-choices', 'aria-label': t('features.title'), disabled: Boolean(reason) },
+                h('p', { className: 'wxb-muted' }, t('features.repliesHint')),
+                h('div', { className: 'wxb-reply-options' }, ...options.map(key => h('label', { key },
+                  h('input', { type: 'checkbox', checked: draft?.[key] ?? channel.preferences?.[key] ?? channel.replyDefaults?.[key] ?? false,
+                    onChange: event => set(key, event.target.checked) }), t(`features.${key}`))))),
               h(ActionButton, { type: 'submit', label: t('features.save'), reason: reason || (!draft ? t('features.unchanged') : null),
                 busy: state.busy === 'preferences.update' }),
               saved ? h('p', { role: 'status', className: 'wxb-muted' }, t('features.saved')) : null));
@@ -1486,7 +1465,7 @@ window.__ModuleLoader__.load({
             selected ? h(React.Fragment, { key: selected.id },
               selected.id === 'weixin' ? h(WeChatChannel, { locale, store: weixinStore, state: weixin, headingRef: detailHeading })
                 : h(ChannelDetail, { channel: selected, store, state, headingRef: detailHeading }),
-              h(ChannelFeatures, { channel: selected, store, state }),
+              h(ChannelReplyOptions, { channel: selected, store, state }),
               selected.id !== 'weixin' ? h(ChannelSessions, { sessions: selected.sessions }) : null)
                 : h('ul', { className: 'wxb-list' }, channels.map(channel => {
                   const status = channel.id === 'weixin' ? channel.status : available ? channel.status : null;

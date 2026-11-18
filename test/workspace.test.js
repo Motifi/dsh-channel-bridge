@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, realpath, rm, lstat, writeFile, symlink } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { channelToolPaths, readChannelFile, resolveWeixinWorkspace, resolveWorkspaceDir } from '../lib/workspace.js';
+import { readChannelFile, resolveWeixinWorkspace, resolveWorkspaceDir } from '../lib/workspace.js';
 
 async function ownedDirectory(t) {
   const parent = await realpath(tmpdir());
@@ -20,22 +20,13 @@ async function ownedDirectory(t) {
   return root;
 }
 
-test('channel file tools and outbound attachments stay inside the exact private workspace', async t => {
+test('outbound channel attachments stay inside the exact private workspace', async t => {
   const root = await ownedDirectory(t);
   const session = await resolveWorkspaceDir(undefined, root, 'session');
   const other = join(root, 'other.txt');
   await writeFile(other, 'other conversation');
   await writeFile(join(session, 'mine.txt'), 'OK');
   await symlink(other, join(session, 'escaped.txt'));
-  const execute = (name, args) => channelToolPaths(session, session, { name, arguments: args });
-  assert.equal(await execute('read', { file_path: 'mine.txt' }), true);
-  assert.equal(await execute('write', { file_path: 'new/report.txt' }), true);
-  assert.equal(await execute('read', { file_path: '../other.txt' }), false);
-  assert.equal(await execute('read', { file_path: '~/other.txt' }), false);
-  assert.equal(await execute('edit', { file_path: 'escaped.txt' }), false);
-  assert.equal(await execute('grep', { workdir: session, path: other, pattern: '.' }), false);
-  assert.equal(await execute('apply_patch', { input: '*** Move to: ../elsewhere' }), false);
-  assert.equal(await execute('bash', { run_in_background: true }), false);
   assert.deepEqual(await readChannelFile(session, 'mine.txt', 2), { name: 'mine.txt', mime: 'text/plain', data: 'T0s=' });
   await assert.rejects(readChannelFile(session, 'escaped.txt', 1024), { code: 'INVALID_REQUEST' });
   await assert.rejects(readChannelFile(session, 'mine.txt', 1), { code: 'INVALID_REQUEST' });

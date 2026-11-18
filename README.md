@@ -1,6 +1,6 @@
 # DSH Channel Bridge
 
-DSH Channel Bridge 将消息渠道接入 **DeepSeek Harness**。在左侧栏的 **消息渠道** 中管理连接。微信沿用现有的 iLink 登录、批准关系和会话历史。Telegram 轮询与 WebSocket 由插件直接连接，其余渠道使用固定版本的 nanobot 平台传输。DSH 负责会话、模型和附件，所有渠道默认禁用 Agent 工具，可在每个渠道的「Agent 工具与回复」中单独授权。
+DSH Channel Bridge 将消息渠道接入 **DeepSeek Harness**。在左侧栏的 **消息渠道** 中管理连接。微信沿用现有的 iLink 登录、批准关系和会话历史。Telegram 轮询与 WebSocket 由插件直接连接，其余渠道使用固定版本的 nanobot 平台传输。渠道会话统一使用 DSH 的标准模式，工具权限由 DSH 管理。
 
 [渠道进度表和逐渠道使用说明](./docs/channels.md)列出了源码实际注册的全部 19 个渠道、平台设置、支持范围和验证状态。
 
@@ -18,7 +18,9 @@ pnpm test
 
 **复制或修改项目文件不会自动切换已安装插件的来源。** 更换现有实例的安装目录时，使用 DSH Plugin Manager 操作；不要手工覆盖 profile 配置或改动凭据文件，也不要为同一个微信机器人同时开启两个收件实例。
 
-更新已链接的本地插件后，重启 DSH 以载入新的插件模块和渠道预设。原有微信凭据、批准关系和会话由 DSH 继续保留。
+更新已链接的本地插件后，重启 DSH 以重新读取 bundle。如果模式菜单仍显示旧版的「微信安全聊天」或「渠道安全聊天」，先在插件管理器里确认安装来源，再停用并重新启用该 bundle。原有微信凭据和批准关系由 DSH 保留。
+
+DSH 在首轮开始后锁定会话模式。升级后，在原渠道继续发消息时，旧模式会话会提示发送 `/new`，以标准模式开始新会话。旧会话历史仍可在 DSH 中查看。
 
 从 `@local/dsh-weixin-bridge` 迁移时，在插件管理器停用旧包并启用本插件。打开「消息渠道 → 微信」，确认现有的连接和批准关系后，即可卸载旧包。微信凭据和会话历史保存在 DSH profile 中。
 
@@ -36,12 +38,12 @@ pnpm test
 
 ## 所有渠道的工具与权限
 
-- 在渠道详情的 **Agent 工具与回复** 勾选允许的 DSH 工具。模型可见名单跟随本次已授权输入，工具执行仍通过 DSH 的一次性审批。未启用的工具不随请求发送。
-- 新会话分配各自的私有工作目录，并继续允许已有会话以原工作目录恢复。文件工具只接收指向对应私有目录的路径。开启 `channel_send` 后，Agent 可向当前已批准的聊天发送文本和私有工作目录里的附件。
+- 微信和其他渠道使用 DSH 标准模式，工具执行遵循 DSH 的原生沙箱与审批设置。需要批准的调用会显示在对应 DSH 会话中。
+- 新会话分配各自的私有工作目录，恢复已有标准模式会话时沿用原工作目录。渠道消息触发的回合可通过 `channel_send` 向当前已批准的聊天发送文本和私有工作目录里的附件。
 - 微信内容以普通用户消息接入，不能批准用户、开始扫码、恢复连接、修改权限或把自己提升为系统指令。
 - 扫码、验证码、批准、撤销与恢复操作只接受 DSH 本人已登录浏览器。HTTP 管理接口复用 DSH 的 Host/Origin/身份校验，并要求 JSON 和专用请求头；不是公开的微信回调。
 - token 与每用户 `context_token` 保存在 DSH 凭据服务中，不写普通插件配置，不返回给面板或模型。二维码只在已认证的管理面板显示，不进入管理工具结果。DSH 的凭据存储由安装版本提供，**本插件不额外承诺静态加密**；请保护本机 profile 和备份。
-- 默认转发对应渠道回合的最终答复。可按平台启用流式文字、处理进度或工具名称提示。微信保持推理内容私有。
+- 默认转发对应渠道回合的最终答复。可在渠道详情的 **回复选项** 中按平台启用流式文字、处理进度或工具名称提示。微信保持推理内容私有。
 - 如果在该微信会话中从 DSH 手动发送或编辑了额外输入，该会话会被标记为污染，停止微信转发；下一条微信输入使用新的隔离会话，以免混入桌面端私人输入。可复制会话 ID 到 DSH 查阅历史；不要把它当作与桌面私人聊天共用的会话。
 
 ## 微信暂停、断开与恢复
@@ -69,7 +71,7 @@ pnpm test
 
 ## 插件配置
 
-Bundle patch 安装 Host 插件、微信安全聊天预设和通用渠道安全聊天预设。省略 `workspaceDir` 时优先沿用已批准微信会话的历史工作目录，否则以 DSH 默认工作目录创建 `weixin-workspace` 作为旧会话兼容路径。新会话使用 `channel-private-workspaces/<会话 ID>`。仓库忽略同名运行目录，凭据与会话历史继续由 DSH profile 管理。
+Bundle patch 安装 Host 插件。省略 `workspaceDir` 时优先沿用已批准微信会话的历史工作目录，否则以 DSH 默认工作目录创建 `weixin-workspace` 作为旧会话兼容路径。新会话使用 `channel-private-workspaces/<会话 ID>`。仓库忽略同名运行目录，凭据与会话历史继续由 DSH profile 管理。
 
 | 字段 | 默认/当前值 | 含义 |
 | --- | --- | --- |
@@ -101,7 +103,6 @@ ELECTRON_RUN_AS_NODE=1 "$DSH_NODE_EXECUTABLE" --test test/*.test.js
 实现分层：
 
 - [Host 入口](./index.js)：配置、凭据服务、持久化域、受认证管理 API、Agent 管理工具。
-- [安全聊天策略](./session-policy.js)：专用预设的工具限制和提示。
 - [iLink 客户端](./lib/ilink.js)：HTTP 协议、域名/重定向防护、取消/超时、文本解析与分段。
 - [桥接运行时](./lib/bridge.js)：扫码、配对、收件/待发队列和连接生命周期。
 - [DSH Agent 适配器](./lib/agent-backend.js) 与 [投影](./lib/projection.js)：持久输入、恢复和最终轮次关联。
@@ -114,4 +115,4 @@ ELECTRON_RUN_AS_NODE=1 "$DSH_NODE_EXECUTABLE" --test test/*.test.js
 
 ## English summary
 
-DSH Channel Bridge adds a **Message Channels** page to DeepSeek Harness. See the [channel matrix](./docs/channels.md) for the 19 upstream channels, configuration and verification status. The WeChat adapter retains its existing iLink account, approvals and DSH history. Use **Message Channels → WeChat** to sign in and approve your account. Platform credentials and retained login state use DSH's credential service. Channel sessions are isolated. Enable specific native DSH tools in a channel’s Agent tools and replies section. Each tool call requires DSH approval.
+DSH Channel Bridge adds a **Message Channels** page to DeepSeek Harness. The WeChat adapter retains its existing iLink account, approvals and DSH history. Use **Message Channels → WeChat** to sign in and approve your account. Platform credentials and retained login state use DSH's credential service. Each channel conversation uses DSH's Standard mode and native tool permissions. See the [channel matrix](./docs/channels.md) for the 19 upstream channels, configuration and verification status.

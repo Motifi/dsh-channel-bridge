@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WeixinBridge } from '../lib/bridge.js';
 import { stateSchema, accountSchema } from '../lib/schemas.js';
-import { accountKey, initialState, freshPairingCode, pairingHash, matchesPairingCode, inputKey, messageId } from '../lib/state.js';
+import { BridgeError, accountKey, initialState, freshPairingCode, pairingHash, matchesPairingCode, inputKey, messageId } from '../lib/state.js';
 
 const clone = value => structuredClone(value);
 const raw = (id = 'm1', user = 'wx-owner', text = '你好', token = `ctx-${id}`) => ({
@@ -389,6 +389,27 @@ test('no reply is forwarded from a contaminated DSH conversation; the next messa
   assert.notEqual(f.bridge.state.users[0].sessionId, old);
   assert.equal(f.sends.some(send => send.text.includes('PRIVATE')), false);
   assert.match(f.sends.at(-1).text, /保护隐私/);
+});
+
+test('a retired WeChat session can send a recovery notice and rotates on /new', async () => {
+  const f = fixture(); await f.approve();
+  const oldSessionId = f.bridge.state.users[0].sessionId;
+  const run = f.backend.run;
+  f.backend.isSafe = id => id !== oldSessionId;
+  f.backend.run = async entry => {
+    if (entry.sessionId === oldSessionId) throw new BridgeError('LEGACY_PRESET', 'Retired preset');
+    return run(entry);
+  };
+  await f.bridge.receive(raw('old'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.match(f.sends.at(-1).text, /\/new.*标准模式/);
+  assert.equal(f.persisted().users[0].sessionId, oldSessionId);
+  await f.bridge.receive(raw('rotate', 'wx-owner', '/new'), f.account().id, f.signal);
+  await f.bridge.receive(raw('next'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(f.runs.length, 1);
+  assert.notEqual(f.runs[0].sessionId, oldSessionId);
+  assert.equal(f.sends.at(-1).text, '这是一条回答。');
 });
 
 test('revoke cancels queues and context; disconnect forgets access, not DSH history', async () => {
