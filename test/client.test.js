@@ -117,6 +117,19 @@ test('approval status belongs to an approved sender with a WeChat session', () =
   assert.equal(accepts({ toolApprovalPending: true, sessionId: undefined }), false);
 });
 
+test('the owner snapshot accepts reply issues for an approved sender and uses them instead of the aggregate warning', () => {
+  const user = { userId: 'sender', status: 'approved', firstSeenAt: 1, lastSeenAt: 2,
+    sessionId: `wxbridge-${'a'.repeat(32)}` };
+  const issue = { id: 'reply-key', userId: 'sender', status: 'uncertain', createdAt: 3,
+    sessionId: `wxbridge-${'b'.repeat(32)}` };
+  const view = snapshot({ users: [user], failedReplies: 1, replyIssues: [issue] });
+  assert.equal(core.validSnapshot(view), true, 'the original session may differ from the current binding');
+  assert.equal(core.deriveFeedback(view, null, 0).failedReplies, 0);
+  assert.equal(core.validSnapshot({ ...view, users: [{ ...user, status: 'revoked' }] }), false);
+  assert.equal(core.validSnapshot({ ...view, replyIssues: [{ ...issue, sessionId: 'external' }] }), false);
+  assert.equal(core.validSnapshot({ ...view, replyIssues: [{ ...issue, status: 'retry' }] }), false);
+});
+
 test('client contributes a single page after Automation tasks through the official navigation slots', () => {
   let registration;
   vm.runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value; } } } });

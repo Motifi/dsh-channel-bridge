@@ -35,6 +35,7 @@ window.__ModuleLoader__.load({
         "actions.refreshing": "Refreshing…",
         "actions.start": "Show QR code",
         "actions.rescan": "Generate a new QR code",
+        "actions.reauth": "Scan again",
         "actions.verify": "Submit verification code",
         "actions.cancelLogin": "Cancel sign-in",
         "actions.pause": "Pause receiving",
@@ -94,7 +95,7 @@ window.__ModuleLoader__.load({
         "users.pairingFailed": "The pairing code could not be delivered. Send a new text in WeChat to retry.",
         "users.onlyOne": "Another user is already approved. Revoke that access before approving a different user.",
         "users.revokedHint": "To request access again, send a new text in WeChat and use the new pairing code.",
-        "users.deliveryFailed": "The latest message could not be processed or delivered. Check the connection, then resend the text in WeChat.",
+        "users.deliveryFailed": "The latest message could not be processed or delivered. Check its conversation in DSH.",
         "users.toolApprovalPending": "Waiting for approval in DSH",
         "users.sessionDetails": "Conversation details",
         "users.sessionLabel": "DSH session ID",
@@ -121,6 +122,21 @@ window.__ModuleLoader__.load({
         "details.never": "Not yet",
         "details.localTime": "Times are shown in your local time zone.",
         "replies.failureTitle": "Replies need review",
+        "replies.blocked": "Waiting for a new WeChat context",
+        "replies.blockedHint": "Send /status in the original WeChat chat. The remaining parts will be sent when delivery becomes available.",
+        "replies.uncertain": "Delivery unconfirmed",
+        "replies.uncertainHint": "Check the original conversation in DSH, then check WeChat. This reply will not be resent automatically.",
+        "replies.delivery-failed": "WeChat delivery failed",
+        "replies.delivery-failedHint": "Check the reply in the original DSH conversation.",
+        "replies.task-failed": "Task did not complete",
+        "replies.task-failedHint": "Check the original conversation in DSH to see whether its tools ran.",
+        "replies.interrupted": "Task interrupted",
+        "replies.interruptedHint": "Check the original conversation and tool activity in DSH before taking further action.",
+        "replies.model-required": "DSH model required",
+        "replies.model-requiredHint": "This task has not started. Select an available model in DSH settings, then submit the task from WeChat.",
+        "replies.legacy-preset": "Legacy session needs a new conversation",
+        "replies.legacy-presetHint": "Send /new in WeChat, then start a task in Standard mode. The previous conversation is still in DSH.",
+        "replies.openOriginal": "View original DSH conversation",
         "replies.failureNotice": "{count} replies failed or have an unconfirmed delivery result. They were not automatically resent. Check the conversation history in DSH before taking further action.",
         "errors.offline": "You are offline. Reconnect to continue; status checks resume automatically.",
         "errors.network": "Cannot reach DSH. Check the connection and keep DSH running, then refresh status. If an operation was interrupted, refresh before retrying it.",
@@ -225,6 +241,7 @@ window.__ModuleLoader__.load({
         "actions.refreshing": "正在刷新…",
         "actions.start": "显示登录二维码",
         "actions.rescan": "生成新二维码",
+        "actions.reauth": "重新扫码",
         "actions.verify": "提交验证码",
         "actions.cancelLogin": "取消登录",
         "actions.pause": "暂停接收",
@@ -284,7 +301,7 @@ window.__ModuleLoader__.load({
         "users.pairingFailed": "配对码发送失败，请在微信发送新文本后重试。",
         "users.onlyOne": "已有其他用户获批，请先撤销该用户的授权，再批准其他用户。",
         "users.revokedHint": "如需重新申请，请在微信发送新文本，并使用新的配对码。",
-        "users.deliveryFailed": "最近的消息处理或发送失败，请检查连接后在微信重新发送文本。",
+        "users.deliveryFailed": "最近的消息处理或发送失败。请在 DSH 核对对应会话。",
         "users.toolApprovalPending": "等待在 DSH 批准",
         "users.sessionDetails": "会话详情",
         "users.sessionLabel": "DSH 会话 ID",
@@ -311,6 +328,21 @@ window.__ModuleLoader__.load({
         "details.never": "暂无",
         "details.localTime": "时间均以您本地时区显示。",
         "replies.failureTitle": "有回复需要核对",
+        "replies.blocked": "等待新的微信上下文",
+        "replies.blockedHint": "在原微信对话发送 /status。发送条件恢复后会续发剩余分段。",
+        "replies.uncertain": "发送结果未确认",
+        "replies.uncertainHint": "先在 DSH 核对原答复，再查看微信是否收到。这条答复不会自动重发。",
+        "replies.delivery-failed": "微信发送失败",
+        "replies.delivery-failedHint": "请在 DSH 中查看原会话的答复。",
+        "replies.task-failed": "任务未完成",
+        "replies.task-failedHint": "请在原 DSH 会话核对工具是否已执行。",
+        "replies.interrupted": "任务处理已中断",
+        "replies.interruptedHint": "请先在 DSH 核对原任务和工具执行情况。",
+        "replies.model-required": "需要可用的 DSH 模型",
+        "replies.model-requiredHint": "任务尚未开始。请先在 DSH 设置中选择可用模型，再从微信提交任务。",
+        "replies.legacy-preset": "旧模式会话需要新建",
+        "replies.legacy-presetHint": "在微信发送 /new 后再发起标准模式任务。旧会话仍可在 DSH 查看。",
+        "replies.openOriginal": "查看原 DSH 会话",
         "replies.failureNotice": "有 {count} 条回复失败或发送结果未确认，未自动重发。请在 DSH 查看会话历史后再决定下一步。",
         "errors.offline": "当前网络离线，请恢复连接后继续；状态检查会自动恢复。",
         "errors.network": "无法连接 DSH。请检查网络并保持 DSH 运行，然后刷新状态；若操作中断，请先刷新再重试。",
@@ -393,6 +425,8 @@ window.__ModuleLoader__.load({
 
     // BEGIN CLIENT CORE — pure transport/state helpers, tested without React or a DOM.
     const CONNECTION_STATES = new Set(['disconnected', 'connecting', 'connected', 'paused', 'auth-required', 'error']);
+    const TASK_ISSUE_STATES = new Set(['task-failed', 'interrupted', 'model-required', 'legacy-preset']);
+    const REPLY_ISSUE_STATES = new Set(['blocked', 'uncertain', 'delivery-failed', ...TASK_ISSUE_STATES]);
     const ACTIVE_LOGIN_STATES = new Set(['waiting', 'scanned', 'verify-code']);
     const MUTATIONS = new Set(['configure', 'preferences.update', 'login.start', 'login.verify', 'login.cancel', 'connection.pause', 'connection.resume', 'connection.disconnect', 'user.approve', 'user.revoke']);
     const NOTICE_KEYS = {
@@ -442,7 +476,8 @@ window.__ModuleLoader__.load({
       if (notice === 'notice.loginVerified' && (!active || login.verificationFailed)) visibleNotice = null;
       return {
         notice: visibleNotice,
-        failedReplies: snapshot && Number.isSafeInteger(snapshot.failedReplies) && snapshot.failedReplies > 0
+        failedReplies: snapshot && snapshot.replyIssues === undefined
+          && Number.isSafeInteger(snapshot.failedReplies) && snapshot.failedReplies > 0
           ? snapshot.failedReplies : 0,
       };
     }
@@ -471,9 +506,20 @@ window.__ModuleLoader__.load({
           && (user.sessionId === undefined || typeof user.sessionId === 'string')
           && (user.toolApprovalPending === undefined || (value.enabled && user.status === 'approved'
             && user.toolApprovalPending === true && /^wxbridge-[a-f0-9]{32}$/.test(user.sessionId))))
+        && validReplyIssues(value.replyIssues, value.users)
         && Number.isSafeInteger(value.pendingReplies) && value.pendingReplies >= 0
         && Number.isSafeInteger(value.failedReplies) && value.failedReplies >= 0
         && (value.lastPollAt === null || Number.isFinite(value.lastPollAt)));
+    }
+
+    function validReplyIssues(issues, users) {
+      if (issues === undefined) return true;
+      if (!Array.isArray(issues)) return false;
+      const approved = new Set(users.filter(user => user.status === 'approved').map(user => user.userId));
+      return issues.every(issue => issue && typeof issue.id === 'string' && approved.has(issue.userId)
+        && REPLY_ISSUE_STATES.has(issue.status) && Number.isFinite(issue.createdAt) && issue.createdAt >= 0
+        && (issue.taskStatus === undefined || TASK_ISSUE_STATES.has(issue.taskStatus))
+        && (issue.sessionId === undefined || (typeof issue.sessionId === 'string' && /^wxbridge-[a-f0-9]{32}$/.test(issue.sessionId))));
     }
 
     function bridgeError(kind, status, code) {
@@ -820,6 +866,7 @@ window.__ModuleLoader__.load({
 .wxb-qrrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px}.wxb-qr{width:200px;height:200px;max-width:100%;object-fit:contain;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}.wxb-qrtext{flex:1;min-width:min(220px,100%);display:flex;flex-direction:column;gap:10px}.wxb-user{display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px 0;border-top:.5px solid var(--dsw-alias-border-l2)}.wxb-user:first-child{padding-top:0;border-top:0}.wxb-userid{font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:text}
 .wxb-details{display:grid;grid-template-columns:minmax(110px,160px) minmax(0,1fr);gap:8px 16px;font-size:13px;line-height:20px}.wxb-details dt{color:var(--dsw-alias-label-secondary)}.wxb-details dd{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text}.wxb-code{font:inherit;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.wxb-session{display:block;max-width:100%;padding:4px 0;border-radius:3px;font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:all}.wxb-confirm{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wxb-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}.wxb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .wxb-approval{color:var(--dsw-alias-label-primary)}
+.wxb-reply-issues{list-style:none;margin:0;padding:0}
 .wxb-session-details summary{width:fit-content;cursor:pointer;color:var(--dsw-alias-label-secondary);border-radius:3px}.wxb-session-details[open] summary{margin-bottom:8px}
 .wxb-page{height:100%;min-height:0;min-width:0;overflow:auto;padding:24px clamp(16px,5vw,56px);background:var(--dsw-alias-bg-base)}
 .wxb-page>.wxb{max-width:960px;margin-inline:auto}.wxb-page h1{font-size:26px;line-height:34px;font-weight:550;margin:0}
@@ -985,6 +1032,7 @@ window.__ModuleLoader__.load({
           React.useEffect(() => { setVerification(''); setBrokenQr(null); }, [login && login.id]);
           const { active, expired, showQr, needsVerification, signedIn, showLogin, showCancel, showStart }
             = deriveLoginView(snapshot, now, brokenQr);
+          const reauth = snapshot?.connectionStatus === 'auth-required';
           const startReason = reason || (signedIn ? t('disabled.connected') : null);
           const verifyReason = reason || (!verification.trim() ? t('disabled.verification') : null);
           const statusKey = login ? expired ? 'login.expired' : `login.${login.status}` : null;
@@ -1018,9 +1066,9 @@ window.__ModuleLoader__.load({
                 }))) : null)) : null,
             h('div', { className: 'wxb-actions' },
               showStart ? h(ActionButton, {
-                label: t(login ? 'actions.rescan' : 'actions.start'), reason: startReason, variant: 'primary',
+                label: t(reauth ? 'actions.reauth' : login ? 'actions.rescan' : 'actions.start'), reason: startReason, variant: 'primary',
                 busy: state.busy === 'login.start', busyLabel: t('busy.login.start'),
-                onClick: () => { void store.run('login.start', login ? { force: true } : {}); },
+                onClick: () => { void store.run('login.start', reauth || login ? { force: true } : {}); },
               }) : null,
               showCancel ? h(ActionButton, {
                 label: t('actions.cancelLogin'), reason,
@@ -1029,7 +1077,22 @@ window.__ModuleLoader__.load({
               }) : null));
         }
 
-        function UserRow({ user, state, store, reason, now, formatTime, onConfirmed }) {
+        function ReplyIssues({ issues, formatTime }) {
+          if (!issues.length) return null;
+          return h('ul', { className: 'wxb-stack wxb-reply-issues', 'aria-label': t('replies.failureTitle') },
+            ...issues.map(({ id, status, taskStatus, createdAt, sessionId }) =>
+              h('li', { key: id, className: 'wxb-notice', 'data-tone': 'warning' },
+                h('div', { className: 'wxb-rowhead' },
+                  h('strong', null, t(`replies.${status}`)),
+                  h('time', { className: 'wxb-muted' }, formatTime(createdAt))),
+                h('p', null, t(`replies.${status}Hint`)),
+                taskStatus ? h('p', null, t(`replies.${taskStatus}Hint`)) : null,
+                sessionId ? h('div', { className: 'wxb-actions' }, h(ActionButton, {
+                  label: t('replies.openOriginal'), onClick: () => openSession(sessionId),
+                })) : null)));
+        }
+
+        function UserRow({ user, issues, state, store, reason, now, formatTime, onConfirmed }) {
           const [code, setCode] = React.useState('');
           const inputId = React.useId();
           const hintId = React.useId();
@@ -1079,7 +1142,8 @@ window.__ModuleLoader__.load({
               busy: state.busy === approvalBusy, busyLabel: t('busy.user.approve'),
             }))) : null,
             user.status === 'revoked' ? h('p', { className: 'wxb-muted' }, t('users.revokedHint')) : null,
-            user.lastError ? h('p', { className: 'wxb-error' }, t('users.deliveryFailed')) : null,
+            user.status === 'approved' && user.lastError && !issues.length
+              ? h('p', { className: 'wxb-error' }, t('users.deliveryFailed')) : null,
             user.sessionId ? h('div', { className: 'wxb-stack' },
               h('div', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true },
                 waitingForApproval ? h('span', { className: 'wxb-status wxb-approval' },
@@ -1089,7 +1153,8 @@ window.__ModuleLoader__.load({
                 onClick: () => openSession(user.sessionId),
               })),
               h(SessionDetails, { t, sessionId: user.sessionId }))
-              : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
+              : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null,
+            h(ReplyIssues, { issues, formatTime }));
         }
 
         function ChannelDetailHeader({ id, title, headingRef, description, children }) {
@@ -1141,6 +1206,7 @@ window.__ModuleLoader__.load({
             const rank = { approved: 0, pending: 1, revoked: 2 };
             return rank[a.status] - rank[b.status] || b.lastSeenAt - a.lastSeenAt;
           }) : [];
+          const issues = snapshot?.replyIssues ?? [];
           const hasConnection = Boolean(snapshot && (snapshot.account || snapshot.login || snapshot.users.length));
           const canResume = Boolean(snapshot && snapshot.account && connectionStatus !== 'auth-required'
             && (connectionStatus === 'paused' || connectionStatus === 'error' || !snapshot.enabled));
@@ -1185,6 +1251,7 @@ window.__ModuleLoader__.load({
               h('p', { className: 'wxb-muted' }, t('users.hint')),
               snapshot && orderedUsers.length ? h('div', { className: 'wxb-stack' }, ...orderedUsers.map(user =>
                 h(UserRow, { key: user.userId, user, state, store, reason, now, formatTime,
+                  issues: issues.filter(issue => issue.userId === user.userId),
                   onConfirmed: focusUsersAfterConfirmation })))
                 : h('p', { className: 'wxb-muted' }, state.initialLoading ? t('status.loading')
                   : t(snapshot && snapshot.account ? 'users.emptyConnected' : 'users.emptyDisconnected')),

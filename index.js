@@ -64,9 +64,10 @@ function accountStore(credentials) {
 }
 function toolSnapshot(snapshot) {
   // QR content establishes authority and is deliberately user-only, even as an image.
-  return { ...snapshot, users: snapshot.users.map(({ toolApprovalPending, ...user }) => user), login: snapshot.login ? {
-    status: snapshot.login.status, expiresAt: snapshot.login.expiresAt,
-    verificationFailed: snapshot.login.verificationFailed,
+  const { replyIssues, ...view } = snapshot;
+  return { ...view, users: view.users.map(({ toolApprovalPending, ...user }) => user), login: view.login ? {
+    status: view.login.status, expiresAt: view.login.expiresAt,
+    verificationFailed: view.login.verificationFailed,
   } : null };
 }
 
