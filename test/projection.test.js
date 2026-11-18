@@ -235,13 +235,23 @@ test('mixed scheduled and channel input never export a shared answer', () => {
   assertFailed(state, message.id, 'mixed-turn');
 });
 
-test('native model-switch notices and skill catalogs do not contaminate channel sessions', () => {
+test('native Standard mode context does not contaminate channel sessions', () => {
   const message = user();
   const notice = { role: 'user', id: 'f9b58b71-7679-4574-8f4e-112f0e11a209', source: { kind: 'model-selection', form: 'notice' } };
   const catalog = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a210', source: { kind: 'skill-catalog', form: 'catalog' } };
-  const state = fold(running(message), accepted(notice), accepted(catalog), assistant('reply'), end());
+  const time = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a211',
+    source: { kind: 'time-context', form: 'snapshot', sections: [] } };
+  const instructions = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a212',
+    source: { kind: 'agent-instructions', form: 'instructions' } };
+  const skill = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a213',
+    source: { kind: 'skill-invocation', form: 'instructions', name: 'example' } };
+  const relay = { ...notice, id: 'f9b58b71-7679-4574-8f4e-112f0e11a214',
+    source: { kind: 'agent-message', form: 'relay', senderSessionId: 'child-session' } };
+  const state = fold(running(message), accepted(notice), accepted(catalog), accepted(time), accepted(instructions),
+    splice([skill, relay]), accepted(skill), accepted(relay), assistant('reply'), end());
   assert.equal(state.contaminated, false);
   assert.equal(completionOf(state, message.id).text, 'reply');
+  assert.equal(fold(running(message), accepted({ ...time, id: 'foreign-input' })).contaminated, true);
 });
 
 test('multiple admitted bridge inputs settle only in their shared active turn', () => {

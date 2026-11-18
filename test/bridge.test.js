@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WeixinBridge } from '../lib/bridge.js';
 import { stateSchema, accountSchema } from '../lib/schemas.js';
-import { accountKey, initialState, freshPairingCode, pairingHash, matchesPairingCode, inputKey, messageId } from '../lib/state.js';
+import { BridgeError, accountKey, initialState, freshPairingCode, pairingHash, matchesPairingCode, inputKey, messageId } from '../lib/state.js';
 
 const clone = value => structuredClone(value);
 const raw = (id = 'm1', user = 'wx-owner', text = '你好', token = `ctx-${id}`) => ({
@@ -268,6 +268,324 @@ test('a multipart reply does not resend completed parts after context restrictio
   assert.equal(f.bridge.state.outbox[0].state, 'sent');
 });
 
+test('WeChat /status continues only the remaining parts of a blocked reply without entering the Agent queue', async () => {
+  const f = fixture();
+  await f.approve();
+  const originalSession = f.bridge.state.users[0].sessionId;
+  const accepted = [];
+  f.backend.run = async entry => { f.runs.push(entry); return { state: 'completed', text: '文'.repeat(2500) }; };
+  f.client.sendText = async ({ text, clientId, contextToken }) => {
+    if (text.length < 1000 && contextToken === 'old-context') throw Object.assign(new Error('restricted'), { kind: 'context' });
+    accepted.push({ text, clientId });
+  };
+  await f.bridge.receive(raw('original-task', 'wx-owner', 'private task input', 'old-context'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.deepEqual(accepted.map(item => item.text.length), [1800]);
+  assert.deepEqual(f.bridge.snapshot().replyIssues, [{
+    id: f.persisted().outbox[0].id, userId: 'wx-owner', status: 'blocked', sessionId: originalSession, createdAt: 100000,
+  }]);
+  const status = raw('recover', 'wx-owner', '/status', 'fresh-context');
+  await f.bridge.receive(status, f.account().id, f.signal);
+  await f.bridge.receive(status, f.account().id, f.signal);
+  await f.runOnce();
+  assert.deepEqual(accepted.map(item => item.text.length), [1800, 700]);
+  assert.notEqual(accepted[1].clientId, accepted[0].clientId);
+  assert.deepEqual(f.runs.map(item => item.text), ['private task input']);
+  assert.deepEqual(f.bridge.snapshot().replyIssues, []);
+});
+
+test('only the requesting sender recovers blocked replies while a different turn is running', async (t) => {
+  const f = fixture();
+  await f.approve('user-a');
+  await f.approve('user-b');
+  const running = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  t.after(() => release.resolve());
+  f.backend.run = async entry => {
+    f.runs.push(entry);
+    if (entry.text === 'in progress') { running.resolve(); await release.promise; }
+    return { state: 'completed', text: entry.text };
+  };
+  const delivered = [];
+  f.client.sendText = async ({ userId, text, contextToken }) => {
+    if (contextToken.startsWith('old-')) throw Object.assign(new Error('restricted'), { kind: 'context' });
+    delivered.push({ userId, text });
+  };
+  await f.bridge.receive(raw('first-a', 'user-a', 'answer A', 'old-a'), f.account().id, f.signal);
+  await f.bridge.receive(raw('first-b', 'user-b', 'answer B', 'old-b'), f.account().id, f.signal);
+  await f.runOnce();
+  await f.bridge.receive(raw('second-b', 'user-b', 'in progress', 'old-b'), f.account().id, f.signal);
+  const work = f.runOnce();
+  await running.promise;
+  try {
+    await f.bridge.receive(raw('refresh-a', 'user-a', '/status', 'fresh-a'), f.account().id, f.signal);
+    assert.deepEqual(delivered, [{ userId: 'user-a', text: 'answer A' }]);
+    assert.deepEqual(f.bridge.snapshot().replyIssues.map(item => item.userId), ['user-b']);
+  } finally {
+    release.resolve();
+    await work;
+  }
+  assert.deepEqual(f.runs.map(item => item.text), ['answer A', 'answer B', 'in progress']);
+});
+
+test('a progress hint cannot take the same sender’s context while /status is continuing a reply', async (t) => {
+  const f = fixture({ deliveryOptions: () => ({ sendProgress: true }) });
+  await f.approve();
+  const activeTurn = Promise.withResolvers();
+  const finishTurn = Promise.withResolvers();
+  const recovering = Promise.withResolvers();
+  const finishPart = Promise.withResolvers();
+  t.after(() => { finishTurn.resolve(); finishPart.resolve(); });
+  f.backend.run = async (entry, signal, onUpdate) => {
+    if (entry.text === 'next task') {
+      activeTurn.resolve(onUpdate);
+      await finishTurn.promise;
+      return { state: 'completed', text: 'Next answer.' };
+    }
+    return { state: 'completed', text: '文'.repeat(2500) };
+  };
+  const sends = [];
+  f.client.sendText = async ({ text, contextToken }) => {
+    if (contextToken === 'old-context') throw Object.assign(new Error('restricted'), { kind: 'context' });
+    sends.push(text);
+    if (text.length === 1800) { recovering.resolve(); await finishPart.promise; }
+  };
+  await f.bridge.receive(raw('first', 'wx-owner', 'original task', 'old-context'), f.account().id, f.signal);
+  await f.runOnce();
+  await f.bridge.receive(raw('second', 'wx-owner', 'next task', 'old-context'), f.account().id, f.signal);
+  const work = f.runOnce();
+  const update = await activeTurn.promise;
+  const recovery = f.bridge.receive(raw('status', 'wx-owner', '/status', 'fresh-context'), f.account().id, f.signal);
+  await recovering.promise;
+  const progress = update({ type: 'progress', text: 'Working.' });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(sends.map(text => text.length), [1800]);
+  } finally {
+    finishPart.resolve();
+    await Promise.all([recovery, progress]);
+    finishTurn.resolve();
+    await work;
+  }
+  assert.deepEqual(sends.map(text => text.length), [1800, 700, 'Working.'.length, 'Next answer.'.length]);
+});
+
+test('after /status is recorded, restart spends the fresh context on the blocked reply first', async () => {
+  const f = fixture({ contextBudget: 1 });
+  await f.approve();
+  const key = f.account().id;
+  await f.bridge.setContext(key, 'wx-owner', 'old-context');
+  const previousVersion = f.account().contexts[0].version;
+  await f.bridge.mutate(state => {
+    f.bridge.addOutput(state, { id: 'earlier', userId: 'wx-owner', key, text: 'Earlier ordinary output.' });
+    f.bridge.addOutput(state, { id: 'blocked', userId: 'wx-owner', key, text: 'Blocked reply.' });
+    Object.assign(state.outbox[1], { state: 'blocked', contextVersion: previousVersion });
+  });
+  f.sends.length = 0;
+  const stop = new AbortController();
+  const request = raw('recover', 'wx-owner', '/status', 'fresh-context');
+  const receipt = inputKey(key, 'wx-owner', 'recover');
+  const write = f.store.write;
+  f.store.write = async next => {
+    await write(next);
+    if (next.seen.includes(receipt)) stop.abort();
+  };
+  await f.bridge.receive(request, key, stop.signal);
+  assert.equal(f.sends.length, 0);
+  f.store.write = write;
+
+  await f.bridge.initialize();
+  await f.bridge.receive(request, key, f.signal);
+  await f.runOnce();
+  assert.deepEqual(f.sends.map(send => send.text), ['Blocked reply.']);
+  assert.equal(f.persisted().outbox.find(item => item.id === 'blocked').state, 'sent');
+});
+
+test('restart midway through continuation protects the acknowledged reply’s remaining parts', async () => {
+  const f = fixture({ contextBudget: 2 });
+  await f.approve();
+  const key = f.account().id;
+  await f.bridge.setContext(key, 'wx-owner', 'old-context');
+  const previousVersion = f.account().contexts[0].version;
+  await f.bridge.mutate(state => {
+    f.bridge.addOutput(state, { id: 'earlier', userId: 'wx-owner', key, text: 'Earlier ordinary output.' });
+    f.bridge.addOutput(state, { id: 'blocked', userId: 'wx-owner', key, text: '文'.repeat(2500) });
+    Object.assign(state.outbox[1], { state: 'blocked', contextVersion: previousVersion });
+  });
+  f.sends.length = 0;
+  const stop = new AbortController();
+  const write = f.store.write;
+  f.store.write = async next => {
+    await write(next);
+    if (next.outbox.some(item => item.id === 'blocked' && item.nextPart === 1)) stop.abort();
+  };
+  await f.bridge.receive(raw('continue', 'wx-owner', '/status', 'fresh-context'), key, stop.signal);
+  assert.deepEqual(f.sends.map(send => send.text.length), [1800]);
+  assert.equal(f.persisted().outbox.find(item => item.id === 'blocked').state, 'pending');
+
+  f.store.write = write;
+  await f.bridge.initialize();
+  await f.runOnce();
+  assert.deepEqual(f.sends.map(send => send.text.length), [1800, 700]);
+  assert.equal(f.persisted().outbox.find(item => item.id === 'blocked').state, 'sent');
+});
+
+test('a replay of /status remains a recovery command after a crash before its receipt completes', async () => {
+  const f = fixture();
+  await f.approve();
+  const key = f.account().id;
+  const sends = [];
+  f.client.sendText = async ({ text, contextToken }) => {
+    if (contextToken === 'old-context') throw Object.assign(new Error('restricted'), { kind: 'context' });
+    sends.push(text);
+  };
+  await f.bridge.receive(raw('task', 'wx-owner', 'original task', 'old-context'), key, f.signal);
+  await f.runOnce();
+  const request = raw('recover', 'wx-owner', '/status', 'fresh-context');
+  const receipt = inputKey(key, 'wx-owner', 'recover');
+  const write = f.store.write;
+  f.store.write = async next => {
+    if (next.seen.includes(receipt)) throw new Error('receipt write interrupted');
+    await write(next);
+  };
+  await assert.rejects(f.bridge.receive(request, key, f.signal), /receipt write interrupted/);
+  f.store.write = write;
+  await f.bridge.initialize();
+  await f.bridge.deliver(f.signal);
+  assert.deepEqual(sends, ['这是一条回答。']);
+
+  await f.bridge.receive(request, key, f.signal);
+  await f.runOnce();
+  assert.deepEqual(sends, ['这是一条回答。']);
+  assert.deepEqual(f.runs.map(item => item.text), ['original task']);
+});
+
+test('disconnect clears an unfinished recovery receipt with the linked account', async () => {
+  const f = fixture();
+  await f.approve();
+  const receipt = inputKey(f.account().id, 'wx-owner', 'interrupted-recovery');
+  await f.bridge.mutate(state => { state.recoveryReceipts = [receipt]; });
+  await f.bridge.action('connection.disconnect', {}, { user: true });
+  assert.deepEqual(f.persisted().recoveryReceipts ?? [], []);
+});
+
+test('unconfirmed replies retain their original session after /new and are not sent or run again on /status', async () => {
+  const f = fixture();
+  await f.approve();
+  const originalSession = f.bridge.state.users[0].sessionId;
+  await f.bridge.receive(raw('original-task', 'wx-owner', 'original task'), f.account().id, f.signal);
+  const delivered = [];
+  f.client.sendText = async ({ text }) => {
+    delivered.push(text);
+    throw Object.assign(new Error('ack lost after delivery'), { kind: 'network' });
+  };
+  await f.runOnce();
+  await f.bridge.initialize();
+  f.client.sendText = async ({ text }) => { delivered.push(text); };
+  const runTask = f.backend.run;
+  f.backend.run = async entry => {
+    if (entry.text !== '/status') return runTask(entry);
+    f.runs.push(entry);
+    return { state: 'completed', text: 'Current status.' };
+  };
+  await f.bridge.receive(raw('rotate', 'wx-owner', '/new'), f.account().id, f.signal);
+  await f.bridge.receive(raw('query', 'wx-owner', '/status'), f.account().id, f.signal);
+  await f.runOnce();
+  const view = f.bridge.snapshot();
+  assert.notEqual(view.users[0].sessionId, originalSession);
+  assert.deepEqual(view.replyIssues, [{
+    id: f.persisted().outbox.find(item => item.state === 'uncertain').id, userId: 'wx-owner',
+    status: 'uncertain', sessionId: originalSession, createdAt: 100000,
+  }]);
+  assert.deepEqual(delivered, ['这是一条回答。', '已开始新会话。', 'Current status.']);
+  assert.deepEqual(f.runs.map(item => item.text), ['original task', '/status']);
+});
+
+test('an abandoned sending record is never replayed after an in-process storage failure', async () => {
+  const f = fixture();
+  await f.approve();
+  await f.bridge.receive(raw('original-task'), f.account().id, f.signal);
+  const write = f.store.write;
+  f.store.write = async state => {
+    if (state.outbox.some(item => ['sent', 'uncertain'].includes(item.state))) throw new Error('failed to persist send outcome');
+    return write(state);
+  };
+  await assert.rejects(f.runOnce(), /failed to persist send outcome/);
+  const count = f.sends.length;
+  assert.equal(f.persisted().outbox[0].state, 'sending');
+  f.store.write = write;
+  await f.bridge.deliver(f.signal);
+  assert.equal(f.sends.length, count);
+  assert.equal(f.bridge.snapshot().replyIssues[0].status, 'uncertain');
+});
+
+test('recovering an output uses a context newer than the version actually tried', async () => {
+  const f = fixture();
+  await f.approve();
+  await f.bridge.receive(raw('original-task'), f.account().id, f.signal);
+  f.setTime(200_000);
+  f.client.getConfig = async () => ({ context_token: 'refreshed-by-getconfig' });
+  const tried = [];
+  f.client.sendText = async ({ contextToken }) => {
+    tried.push(contextToken);
+    if (contextToken === 'refreshed-by-getconfig') throw Object.assign(new Error('restricted'), { kind: 'context' });
+  };
+  await f.runOnce();
+  await f.bridge.deliver(f.signal);
+  assert.deepEqual(tried, ['refreshed-by-getconfig']);
+  await f.bridge.receive(raw('resume', 'wx-owner', '/status', 'new-inbound-context'), f.account().id, f.signal);
+  assert.deepEqual(tried, ['refreshed-by-getconfig', 'new-inbound-context']);
+  assert.deepEqual(f.bridge.snapshot().replyIssues, []);
+});
+
+test('a slow getConfig response cannot supersede a newer inbound context', async (t) => {
+  const f = fixture();
+  await f.approve();
+  const refreshing = Promise.withResolvers();
+  const config = Promise.withResolvers();
+  t.after(() => config.resolve({}));
+  f.client.getConfig = async () => { refreshing.resolve(); return config.promise; };
+  const contexts = [];
+  f.client.sendText = async ({ contextToken }) => { contexts.push(contextToken); };
+  await f.bridge.receive(raw('original', 'wx-owner', 'original', 'old-context'), f.account().id, f.signal);
+  f.setTime(200_000);
+  const work = f.runOnce();
+  await refreshing.promise;
+  await f.bridge.receive(raw('new-input', 'wx-owner', 'new input', 'latest-inbound'), f.account().id, f.signal);
+  config.resolve({ context_token: 'stale-config-response' });
+  await work;
+  assert.deepEqual(contexts, ['latest-inbound', 'latest-inbound']);
+});
+
+test('an interrupted turn points to DSH before any new task is suggested', async () => {
+  const f = fixture();
+  await f.approve();
+  const originalSession = f.bridge.state.users[0].sessionId;
+  f.backend.run = async () => ({ state: 'failed', reason: 'interrupted', text: 'private tool output' });
+  await f.bridge.receive(raw('interrupted-task'), f.account().id, f.signal);
+  await f.runOnce();
+  await f.bridge.initialize();
+  assert.match(f.sends.at(-1).text, /DSH.*核对.*工具/);
+  assert.doesNotMatch(f.sends.at(-1).text, /重新发送|private tool/);
+  assert.deepEqual(f.bridge.snapshot().replyIssues, [{
+    id: f.persisted().outbox[0].id, userId: 'wx-owner', status: 'interrupted', sessionId: originalSession, createdAt: 100000,
+  }]);
+});
+
+test('an unconfirmed interruption notice retains the task failure in the owner panel', async () => {
+  const f = fixture();
+  await f.approve();
+  const originalSession = f.bridge.state.users[0].sessionId;
+  f.backend.run = async () => ({ state: 'failed', reason: 'interrupted', text: '' });
+  f.client.sendText = async () => { throw Object.assign(new Error('ack lost'), { kind: 'network' }); };
+  await f.bridge.receive(raw('interrupted-task'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.deepEqual(f.bridge.snapshot().replyIssues, [{
+    id: f.persisted().outbox[0].id, userId: 'wx-owner', status: 'uncertain', taskStatus: 'interrupted',
+    sessionId: originalSession, createdAt: 100000,
+  }]);
+});
+
 test('attachments are durably queued alongside final text and resume after a context restriction', async () => {
   const f = fixture();
   await f.approve();
@@ -321,6 +639,119 @@ test('WeChat clears its typing indicator after finalizing a turn', async () => {
   assert.deepEqual(typing.map(({ status, typingTicket, userId }) => [status, typingTicket, userId]),
     [[1, 'ticket', 'wx-owner'], [2, 'ticket', 'wx-owner']]);
   assert.equal(f.sends.at(-1).text, 'Ready.');
+});
+
+test('WeChat makes approval visible for the requesting sender and sends one notice per turn', async () => {
+  const f = fixture();
+  await f.approve('user-a');
+  await f.approve('user-b');
+  f.sends.length = 0;
+  const approvalViews = [];
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true, text: 'private tool arguments' });
+    approvalViews.push(f.bridge.snapshot().users.map(user => [user.userId, user.toolApprovalPending]));
+    await onUpdate({ type: 'approval', pending: false });
+    approvalViews.push(f.bridge.snapshot().users.map(user => user.toolApprovalPending));
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: 'Original final reply.' };
+  };
+
+  await f.bridge.receive(raw('needs-approval', 'user-a'), f.account().id, f.signal);
+  await f.runOnce();
+
+  assert.deepEqual(approvalViews, [[['user-a', true], ['user-b', undefined]], [undefined, undefined]]);
+  assert.deepEqual(f.bridge.snapshot().users.map(user => user.toolApprovalPending), [undefined, undefined]);
+  assert.equal(f.sends.length, 2);
+  assert.ok(f.sends.every(reply => reply.userId === 'user-a'));
+  assert.match(f.sends[0].text, /DSH.*批准[\s\S]*消息渠道.*微信/);
+  assert.doesNotMatch(f.sends[0].text, /private tool/);
+  assert.equal(f.sends[1].text, 'Original final reply.');
+});
+
+test('WeChat approval remains visible when the final reply needs the remaining send budget', async () => {
+  const f = fixture({ contextBudget: 4 });
+  await f.approve();
+  f.sends.length = 0;
+  let stateWhileWaiting;
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    stateWhileWaiting = f.bridge.snapshot().users[0].toolApprovalPending;
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(stateWhileWaiting, true);
+  assert.equal(f.sends.length, 4);
+  assert.ok(f.sends.every(reply => /^字+$/.test(reply.text)));
+  assert.equal(f.bridge.state.outbox[0].state, 'sent');
+});
+
+test('a WeChat approval notice reserves capacity for the final reply and earlier queued parts', async () => {
+  const f = fixture({ contextBudget: 5 });
+  await f.approve();
+  f.sends.length = 0;
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await f.bridge.sendToSession(entry.sessionId, { id: 'earlier-tool-output', text: 'Earlier output.' });
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(f.sends[0].text, 'Earlier output.');
+  assert.equal(f.sends.slice(1).map(reply => reply.text).join(''), '字'.repeat(6200));
+  assert.deepEqual(f.bridge.state.outbox.map(item => item.state), ['sent', 'sent']);
+});
+
+test('a WeChat approval notice protects the final reply from output queued after approval', async () => {
+  const f = fixture({ contextBudget: 5 });
+  await f.approve();
+  f.sends.length = 0;
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    await onUpdate({ type: 'approval', pending: false });
+    await f.bridge.sendToSession(entry.sessionId, { id: 'tool-output-after-approval', text: 'Extra output.' });
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.match(f.sends[0].text, /DSH.*批准/);
+  assert.equal(f.sends.slice(1).map(reply => reply.text).join(''), '字'.repeat(6200));
+
+  await f.bridge.setContext(f.account().id, 'wx-owner', 'another-context');
+  await f.bridge.deliver(f.signal);
+  assert.equal(f.sends.at(-1).text, 'Extra output.');
+  assert.equal(f.sends.length, 6);
+});
+
+test('WeChat does not retry an ambiguous approval notice when resuming the same input', async () => {
+  const f = fixture();
+  await f.approve();
+  await f.bridge.receive(raw('interrupted-approval'), f.account().id, f.signal);
+  const stop = new AbortController();
+  const attempts = [];
+  f.client.sendText = async value => {
+    attempts.push(value);
+    throw Object.assign(new Error('send outcome unknown'), { kind: 'network' });
+  };
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    stop.abort();
+    signal.throwIfAborted();
+  };
+  await f.bridge.work(stop.signal);
+  assert.equal(f.persisted().inbox[0].state, 'submitted');
+  assert.equal(f.bridge.snapshot().users[0].toolApprovalPending, undefined);
+
+  await f.bridge.initialize();
+  f.client.sendText = async value => { attempts.push(value); return { ret: 0 }; };
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: 'Final reply after restart.' };
+  };
+  await f.runOnce();
+  assert.equal(attempts.length, 2);
+  assert.match(attempts[0].text, /DSH.*批准/);
+  assert.equal(attempts[1].text, 'Final reply after restart.');
 });
 
 test('opt-in WeChat progress and streamed reply leave only the unsent tail in the final reply', async () => {
@@ -389,6 +820,27 @@ test('no reply is forwarded from a contaminated DSH conversation; the next messa
   assert.notEqual(f.bridge.state.users[0].sessionId, old);
   assert.equal(f.sends.some(send => send.text.includes('PRIVATE')), false);
   assert.match(f.sends.at(-1).text, /保护隐私/);
+});
+
+test('a retired WeChat session can send a recovery notice and rotates on /new', async () => {
+  const f = fixture(); await f.approve();
+  const oldSessionId = f.bridge.state.users[0].sessionId;
+  const run = f.backend.run;
+  f.backend.isSafe = id => id !== oldSessionId;
+  f.backend.run = async entry => {
+    if (entry.sessionId === oldSessionId) throw new BridgeError('LEGACY_PRESET', 'Retired preset');
+    return run(entry);
+  };
+  await f.bridge.receive(raw('old'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.match(f.sends.at(-1).text, /\/new.*标准模式/);
+  assert.equal(f.persisted().users[0].sessionId, oldSessionId);
+  await f.bridge.receive(raw('rotate', 'wx-owner', '/new'), f.account().id, f.signal);
+  await f.bridge.receive(raw('next'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(f.runs.length, 1);
+  assert.notEqual(f.runs[0].sessionId, oldSessionId);
+  assert.equal(f.sends.at(-1).text, '这是一条回答。');
 });
 
 test('revoke cancels queues and context; disconnect forgets access, not DSH history', async () => {

@@ -89,7 +89,6 @@ test('browser artifact is a lazy factory with React as its only runtime import',
   assert.equal(manifest.name, '@local/dsh-channel-bridge');
   assert.equal(registration.id, manifest.name, 'browser module identity follows the package name');
   assert.ok(patch.includes(`name: '${manifest.name}'`));
-  assert.ok(patch.includes(`name: '${manifest.name}/session-policy'`));
   assert.equal(typeof registration.factory, 'function');
   const imports = [...source.matchAll(/\brequire\(['"]([^'"]+)['"]\)/g)].map(match => match[1]);
   assert.deepEqual(imports, ['react']);
@@ -105,6 +104,30 @@ test('opens bridge conversations using DSH workspace navigation for tool approva
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-workspace'));
   assert.match(source, /ctx\.uiWorkspace\.openSession\(sessionId\)/);
   assert.match(source, /h\(ChannelSessions, \{ sessions: selected\.sessions \}\)/);
+});
+
+test('approval status belongs to an approved sender with a WeChat session', () => {
+  const user = { userId: 'sender', status: 'approved', firstSeenAt: 1, lastSeenAt: 2,
+    sessionId: `wxbridge-${'a'.repeat(32)}` };
+  const accepts = changes => core.validSnapshot(snapshot({ enabled: true, users: [{ ...user, ...changes }] }));
+  assert.equal(accepts({}), true, 'older host snapshots have no approval flag');
+  assert.equal(accepts({ toolApprovalPending: true }), true);
+  assert.equal(accepts({ toolApprovalPending: 'true' }), false);
+  assert.equal(accepts({ toolApprovalPending: true, status: 'revoked' }), false);
+  assert.equal(accepts({ toolApprovalPending: true, sessionId: undefined }), false);
+});
+
+test('the owner snapshot accepts reply issues for an approved sender and uses them instead of the aggregate warning', () => {
+  const user = { userId: 'sender', status: 'approved', firstSeenAt: 1, lastSeenAt: 2,
+    sessionId: `wxbridge-${'a'.repeat(32)}` };
+  const issue = { id: 'reply-key', userId: 'sender', status: 'uncertain', createdAt: 3,
+    sessionId: `wxbridge-${'b'.repeat(32)}` };
+  const view = snapshot({ users: [user], failedReplies: 1, replyIssues: [issue] });
+  assert.equal(core.validSnapshot(view), true, 'the original session may differ from the current binding');
+  assert.equal(core.deriveFeedback(view, null, 0).failedReplies, 0);
+  assert.equal(core.validSnapshot({ ...view, users: [{ ...user, status: 'revoked' }] }), false);
+  assert.equal(core.validSnapshot({ ...view, replyIssues: [{ ...issue, sessionId: 'external' }] }), false);
+  assert.equal(core.validSnapshot({ ...view, replyIssues: [{ ...issue, status: 'retry' }] }), false);
 });
 
 test('client contributes a single page after Automation tasks through the official navigation slots', () => {
@@ -161,10 +184,11 @@ test('channel controller aborts its owner request and cancels every timer on unm
   assert.equal(store.getSnapshot().snapshot, null);
 });
 
-test('channel request sends write-only configuration and validates the status envelope', async () => {
+test('channel requests send write-only configuration and ignore obsolete tool metadata in the status envelope', async () => {
   const channel = {
     id: 'telegram', name: 'Telegram', status: 'paused', configured: true, enabled: false,
-    allowedSenders: ['123'], accountVerification: 'pending',
+    allowedSenders: ['123'], accountVerification: 'pending', replyOptions: ['streaming'],
+    preferences: { streaming: false, allowedTools: null },
   };
   const api = core.createChannelApi(async (url, init) => {
     assert.equal(url, '/plugins/channel-bridge/api');
@@ -172,7 +196,7 @@ test('channel request sends write-only configuration and validates the status en
     assert.equal(init.cache, 'no-store');
     assert.equal(init.headers['X-DSH-Channel-Bridge'], '1');
     assert.deepEqual(JSON.parse(init.body), { action: 'configure', id: 'telegram', config: { token: 'fake' } });
-    return { ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [channel] } }) };
+    return { ok: true, status: 200, json: async () => ({ ok: true, value: { channels: [channel], toolChoices: null } }) };
   });
   const value = await api('configure', { id: 'telegram', config: { token: 'fake' } }, new AbortController().signal);
   assert.deepEqual(value.channels, [channel]);
@@ -379,8 +403,9 @@ test('failed or unconfirmed replies have a prominent localized warning with no r
 });
 
 test('successful destructive actions route focus to a stable parent heading while cancellation restores the trigger', () => {
-  const begin = source.indexOf('function ConfirmControl(');
-  const end = source.indexOf('function SessionCopy(', begin);
+  const begin = source.indexOf('    function ConfirmControl(');
+  const end = source.indexOf('\n    function ', begin + 1);
+  assert.ok(begin >= 0 && end > begin, 'ConfirmControl is followed by another module factory function');
   const confirm = source.slice(begin, end);
   assert.match(confirm, /function dismiss\(\) \{ restoreTriggerOnCancel\.current = true; setConfirming\(false\); \}/);
   assert.match(confirm, /else if \(restoreTriggerOnCancel\.current\) \{[\s\S]*trigger\.current\?\.focus\(\)/);

@@ -4,7 +4,7 @@ import { setImmediate as nextTick } from 'node:timers/promises';
 import test from 'node:test';
 import { AgentBackend, commandDomainSpec, createCommandReceipts } from '../lib/agent-backend.js';
 import { initialProjection, applyProjection, completionOf, contentFingerprint } from '../lib/projection.js';
-import { BridgeError, PRESET_ID, hash } from '../lib/state.js';
+import { BridgeError, LEGACY_WEIXIN_PRESET_ID, PRESET_ID, hash } from '../lib/state.js';
 
 const WORKSPACE = '/unit-test/isolated-wechat';
 const SESSION = `wxbridge-${'a'.repeat(32)}`;
@@ -50,6 +50,7 @@ function harness(t, options = {}) {
   const listeners = new Set();
   const streamListeners = new Set();
   const owned = new Set();
+  const remoteEvents = [];
   const calls = {
     get: [], stat: [], create: [], resume: [], mount: [], followup: [], remove: [], cancel: [], dispose: [], flush: 0, whenIdle: 0,
   };
@@ -188,6 +189,7 @@ function harness(t, options = {}) {
     commands: options.commands,
     llm: options.llm,
     skills: options.skills,
+    typertGateway: { getPendingRemoteEvents: () => remoteEvents },
     on(name, callback, options) {
       assert.ok(['session/event', 'agent/assistant-stream'].includes(name));
       if (name === 'agent/assistant-stream') assert.equal(options?.global, true);
@@ -201,7 +203,7 @@ function harness(t, options = {}) {
     set: async state => { receipts = commandDomainSpec.global.schema.parse(JSON.parse(JSON.stringify(state))); },
   });
   backend = new AgentBackend(ctx, { projection, workspaceDir: WORKSPACE, timeoutMs: options.timeoutMs ?? 1_000,
-    workspaceForSession: options.workspaceForSession, commandReceipts });
+    workspaceForSession: options.workspaceForSession, commandReceipts, reportToolApprovals: options.reportToolApprovals });
   function borrow(id = SESSION, changes) {
     const agent = makeAgent(id, changes);
     live.set(id, agent);
@@ -246,7 +248,7 @@ function harness(t, options = {}) {
   });
   return {
     backend, ctx, calls, cells, presets, listeners, live, projection, streamListeners,
-    makeAgent, makeHandle, borrow, publish, notify, seedQueued, admit, complete,
+    makeAgent, makeHandle, borrow, publish, notify, seedQueued, admit, complete, remoteEvents,
     emitStream(agent, frame) { for (const listener of streamListeners) listener({ agent, frame }); },
   };
 }
@@ -294,10 +296,65 @@ test('live events are bounded and tied to the admitted message and exact attempt
   assert.equal(h.listeners.size, 0);
 });
 
-test('per-turn tool admission precedes native followup and disposes after completion', async (t) => {
+test('only unresolved native approvals for the active WeChat turn are reported', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const h = harness(t, { reportToolApprovals: true, timeoutMs: 10_000 });
+  const item = entry('approval');
+  const agent = h.borrow();
+  const other = h.borrow(OTHER_SESSION);
+  const updates = [];
+  const pending = observe(h.backend.run(item, undefined, update => { if (update.type === 'approval') updates.push(update); }));
+  await nextTick();
+  h.remoteEvents.push({ event: 'approval/request', agentId: SESSION });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [], 'no admitted WeChat turn can own the approval yet');
+  h.remoteEvents.length = 0;
+  h.admit(agent, item);
+  h.remoteEvents.push({ event: 'approval/request', agentId: other.id },
+    { event: 'user-questions/request', agentId: SESSION });
+  h.publish(agent, 'approval/asked', { id: 'automatic-decision' });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, []);
+
+  h.remoteEvents.push(
+    { event: 'approval/request', agentId: SESSION, body: 'private tool arguments' },
+    { event: 'approval/request', agentId: SESSION });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [{ type: 'approval', pending: true }]);
+
+  h.remoteEvents.pop();
+  t.mock.timers.tick(500);
+  assert.equal(updates.length, 1, 'another tool decision is still pending');
+  h.remoteEvents.pop();
+  t.mock.timers.tick(500);
+  assert.deepEqual(updates.at(-1), { type: 'approval', pending: false });
+  h.complete(agent, item, 'reply');
+  assert.equal((await pending).text, 'reply');
+});
+
+test('a resumed live turn exposes its existing approval and clears it on interruption', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const h = harness(t, { reportToolApprovals: true, timeoutMs: 10_000 });
+  const item = entry('approval-ended');
+  const agent = h.borrow();
+  const updates = [];
+  h.admit(agent, item);
+  h.remoteEvents.push({ event: 'approval/request', agentId: SESSION });
+  const pending = observe(h.backend.run(item, undefined, update => { if (update.type === 'approval') updates.push(update.pending); }));
+  await nextTick();
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [true]);
+
+  h.complete(agent, item, '', 'interrupted');
+  await pending;
+  assert.deepEqual(updates, [true, false]);
+  assert.equal(h.listeners.size, 0);
+});
+
+test('channel turn binding precedes native followup and disposes after completion', async (t) => {
   const order = [];
   const h = harness(t, { onFollowup: () => { order.push('followup'); } });
-  const item = entry('tool-scope', { admitTools(agent) {
+  const item = entry('tool-scope', { bindTurn(agent) {
     assert.equal(agent.id, SESSION);
     order.push('admit');
     return () => { order.push('dispose'); };
@@ -318,7 +375,7 @@ test('new sessions use a private cwd and old base cwd remains valid for isolated
   const agent = await h.backend.ensureAgent(entry());
   assert.equal(agent.session.header.cwd, perSession);
   assert.equal(h.backend.isSafe(SESSION), true);
-  const legacy = harness(t, { workspaceForSession, stored: { header: { cwd: WORKSPACE, agentPreset: PRESET_ID } } });
+  const legacy = harness(t, { workspaceForSession, stored: { header: { id: SESSION, cwd: WORKSPACE, agentPreset: PRESET_ID } } });
   assert.equal((await legacy.backend.ensureAgent(entry())).session.header.cwd, WORKSPACE);
   const other = harness(t, { workspaceForSession });
   other.borrow(SESSION, { header: { cwd: `${WORKSPACE}/${OTHER_SESSION}` } });
@@ -455,7 +512,7 @@ test('schedule relay filters historical, unbound, and contaminated outcomes and 
     [SESSION, [...reminder(1, 90, 'historical'), ...reminder(2, 110, 'allowed')]],
     [OTHER_SESSION, [...reminder(3, 110, 'unbound')]],
   ]);
-  const state = new Map([[PRESET_ID, { enabledAt: 100 }]]);
+  const state = new Map([[LEGACY_WEIXIN_PRESET_ID, { enabledAt: 100 }]]);
   const receiptStore = { get: key => state.get(key), async put(key, value) { state.set(key, value); } };
   const options = {
     inspect: id => data.has(id) ? { header: header(id), revision: data.get(id).length } : undefined,
@@ -509,14 +566,14 @@ test('new sessions use explicit isolated metadata, selected route, scoped setup 
   assert.equal(h.calls.resume.length, 0);
   const request = h.calls.create[0];
   assert.equal(request.sessionId, item.sessionId);
-  assert.deepEqual(request.meta, { cwd: WORKSPACE, agentPreset: PRESET_ID });
+  assert.deepEqual(request.meta, { cwd: WORKSPACE, agentPreset: 'standard' });
   assert.deepEqual(request.agentOptions, { ...MODEL, maxTokens: 3000 });
   assert.equal(request.signal, signal);
   assert.equal(request.seed, undefined);
   assert.equal(request.inheritedEventCount, undefined);
   assert.equal(request.meta.parentSession, undefined);
   assert.deepEqual(h.calls.stat[0], { id: item.sessionId, settings: { signal } });
-  assert.deepEqual(h.calls.mount, [{ agentCtx: agent.ctx, preset: PRESET_ID }]);
+  assert.deepEqual(h.calls.mount, [{ agentCtx: agent.ctx, preset: 'standard' }]);
   assert.equal(h.backend.handles.get(agent.id).agent, agent);
   assert.equal(h.backend.live.get(agent.id), agent);
 });
@@ -535,6 +592,22 @@ test('resume preserves durable identity/model history instead of seeding from an
   assert.equal(request.meta, undefined);
   assert.equal(request.seed, undefined);
   assert.deepEqual(h.calls.mount, [{ agentCtx: agent.ctx, preset: PRESET_ID }]);
+});
+
+test('legacy presets in saved and live sessions require a new conversation before running', async (t) => {
+  const oldPreset = 'weixin-bridge-chat';
+  const cold = harness(t, {
+    selection: null, stored: { header: { id: SESSION, cwd: WORKSPACE, agentPreset: oldPreset } },
+  });
+  await assert.rejects(cold.backend.ensureAgent(entry()), bridgeError('LEGACY_PRESET', 409));
+  assert.equal(cold.calls.resume.length, 0);
+  assert.equal(await cold.backend.hasSession(SESSION), false);
+
+  const live = harness(t);
+  live.borrow(SESSION, { header: { agentPreset: oldPreset }, preset: oldPreset });
+  await assert.rejects(live.backend.ensureAgent(entry()), bridgeError('LEGACY_PRESET', 409));
+  assert.equal(live.calls.followup.length, 0);
+  assert.equal(await live.backend.hasSession(SESSION), false);
 });
 
 test('safe existing live agents are borrowed without factory/model/persistence work', async (t) => {
@@ -584,10 +657,10 @@ for (const changes of [{ header: { cwd: '/changed-workspace' } }, { preset: 'cha
   });
 }
 
-test('an unavailable default model blocks creation without touching session persistence', async (t) => {
+test('an unavailable default model blocks creation after checking for a saved session', async (t) => {
   const h = harness(t, { selection: null });
   await assert.rejects(h.backend.ensureAgent(entry()), bridgeError('MODEL_UNAVAILABLE', 409));
-  assert.equal(h.calls.stat.length, 0);
+  assert.equal(h.calls.stat.length, 1);
   assert.equal(h.calls.create.length, 0);
 });
 

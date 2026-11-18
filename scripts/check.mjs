@@ -13,7 +13,7 @@ async function sourceFiles(directory) {
   }
   return files;
 }
-const files = ['index.js', 'client.js', 'session-policy.js', 'scripts/check.mjs',
+const files = ['index.js', 'client.js', 'scripts/check.mjs',
   ...await sourceFiles('lib'), ...await sourceFiles('test')];
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', join(root, file)], { stdio: 'inherit' });

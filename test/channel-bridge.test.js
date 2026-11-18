@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ChannelBridge, emptyChannelState } from '../lib/channel-bridge.js';
+import { BridgeError } from '../lib/state.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function until(test) {
@@ -81,6 +82,30 @@ test('only established sender and instance routes can drive callbacks, and /new 
   assert.deepEqual(f.sessions.map(({ message }) => message.id), ['first', 'callback', 'next']);
   assert.equal(f.sessions[0].sessionId, f.sessions[1].sessionId);
   assert.notEqual(f.sessions[0].sessionId, f.sessions[2].sessionId);
+});
+
+test('a retired channel session queues one recovery notice and rotates on /new', async t => {
+  const f = fixture(); t.after(() => f.bridge.close());
+  await f.bridge.initialize(); await f.connect('one');
+  const { onMessage } = f.options.get('one');
+  await onMessage(inbound('first'));
+  await until(() => f.sends.length === 1);
+  const { sessionId } = f.sessions[0];
+  const run = f.bridge.backend.run;
+  f.bridge.backend.run = async entry => {
+    if (entry.sessionId === sessionId) throw new BridgeError('LEGACY_PRESET', 'Retired preset');
+    return run(entry);
+  };
+  await onMessage(inbound('old'));
+  await until(() => f.sends.some(send => send.message.id === 'old'));
+  await onMessage(inbound('old'));
+  assert.deepEqual(f.bridge.boundSessions(), [sessionId]);
+  await onMessage(inbound('rotate', { text: '/new' }));
+  await onMessage(inbound('next'));
+  await until(() => f.sends.some(send => send.message.id === 'next'));
+  assert.deepEqual(f.sends.map(send => send.message.id), ['first', 'old', 'rotate', 'next']);
+  assert.match(f.sends[1].text, /\/new.*标准模式/);
+  assert.notEqual(f.sessions[1].sessionId, sessionId);
 });
 
 test('only routes authorized updates and preserves outbound files in the durable reply', async t => {

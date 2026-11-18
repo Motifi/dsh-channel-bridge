@@ -13,14 +13,10 @@
     ".": "./index.js",
     "./client": "./client.js",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg",
-    "./session-policy": "./session-policy.js",
-    "./session-policy/locale/*.json": "./locale/*.json",
-    "./session-policy/icon": "./icon.svg"
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
-    "session-policy.js",
     "client.js",
     "lib",
     "transport/channels.json",

@@ -1,20 +1,20 @@
 import z from '@deepseek-ai/schemastery';
 import { randomUUID } from 'node:crypto';
 import QRCode from 'qrcode';
-import { channelToolPaths, readChannelFile, resolveWeixinWorkspace, resolveWorkspaceDir } from './lib/workspace.js';
+import { readChannelFile, resolveWeixinWorkspace, resolveWorkspaceDir } from './lib/workspace.js';
 import { WeixinBridge } from './lib/bridge.js';
 import { AgentBackend, commandDomainSpec, createCommandReceipts } from './lib/agent-backend.js';
 import { domainSpec, accountSchema, projectionSchema } from './lib/schemas.js';
 import { ChannelBridge, channelButtons } from './lib/channel-bridge.js';
 import { channelAccounts, channelDomainSpec, channelPreferences } from './lib/channel-storage.js';
-import { ChannelTools, channelToolChoices } from './lib/channel-tools.js';
+import { ChannelTurns } from './lib/channel-tools.js';
 import { createNanobotTransport } from './lib/nanobot-transport.js';
 import { telegram } from './lib/channels/telegram.js';
 import { websocket } from './lib/channels/websocket.js';
 import catalog from './transport/channels.json' with { type: 'json' };
 import { initialProjection, applyProjection } from './lib/projection.js';
 import { createApiHandler, validateChannelRequest } from './lib/http.js';
-import { BridgeError, CHANNEL_PRESET_ID, CHANNEL_SESSION_PATTERN, PRESET_ID, SESSION_PATTERN, accountKey } from './lib/state.js';
+import { BridgeError, CHANNEL_SESSION_PATTERN, LEGACY_CHANNEL_PRESET_ID, SESSION_PATTERN, accountKey } from './lib/state.js';
 import { validateBaseUrl } from './lib/ilink.js';
 
 export const name = 'weixin-bridge';
@@ -64,9 +64,10 @@ function accountStore(credentials) {
 }
 function toolSnapshot(snapshot) {
   // QR content establishes authority and is deliberately user-only, even as an image.
-  return { ...snapshot, login: snapshot.login ? {
-    status: snapshot.login.status, expiresAt: snapshot.login.expiresAt,
-    verificationFailed: snapshot.login.verificationFailed,
+  const { replyIssues, ...view } = snapshot;
+  return { ...view, users: view.users.map(({ toolApprovalPending, ...user }) => user), login: view.login ? {
+    status: view.login.status, expiresAt: view.login.expiresAt,
+    verificationFailed: view.login.verificationFailed,
   } : null };
 }
 
@@ -125,66 +126,48 @@ export async function apply(ctx, config) {
     state: domain.global.get(), sessionPersistence: ctx.sessionPersistence,
   });
   projection = await ctx.sessionProjections.register({
-    key: 'weixin-bridge-turns', stateVersion: 3, stateSchema: projectionSchema,
+    key: 'weixin-bridge-turns', stateVersion: 4, stateSchema: projectionSchema,
     init: header => initialProjection(header), apply: applyProjection,
   });
   const preferences = channelPreferences(ctx.credentials);
   commandDomain = await ctx.storageDomain.open(commandDomainSpec);
   const commandReceipts = createCommandReceipts(commandDomain.global);
-  const policies = new Map();
+  const replySettings = new Map();
   const items = channelCatalog();
-  const policyOf = id => policies.get(id) ?? { allowedTools: [] };
-  await Promise.allSettled(items.map(async ({ id }) => policies.set(id, await preferences.get(id))));
+  const replyOptionsOf = id => replySettings.get(id) ?? {};
+  await Promise.allSettled(items.map(async ({ id }) => replySettings.set(id, await preferences.get(id))));
   const privateWorkspaces = await resolveWorkspaceDir(undefined, ctx.workingDirectory.defaultDirectory, 'channel-private-workspaces');
   const workspaceForSession = id => resolveWorkspaceDir(undefined, privateWorkspaces, id);
   const weixinWorkspaces = config.workspaceDir === undefined ? privateWorkspaces
     : await resolveWorkspaceDir(undefined, workspaceDir, 'channel-private-workspaces');
   const workspaceForWeixin = id => resolveWorkspaceDir(undefined, weixinWorkspaces, id);
   const toolWorkspace = turn => (turn.channelId === 'weixin' ? workspaceForWeixin : workspaceForSession)(turn.agent.id);
-  const tools = new ChannelTools({ stateOf: session => projection.stateOf(session),
-    findAgent: id => ctx.agents.get(id), globalNames: () => ctx.tools.schemas().map(({ name }) => name),
-    async checkArguments(execution) {
-      const turn = tools.active(execution);
-      if (!turn) return false;
-      if (execution.name === 'read' && turn.agent === execution.agent
-        && turn.attachmentPaths.includes(execution.arguments?.file_path)) return true;
-      return channelToolPaths(await toolWorkspace(turn), ctx.workingDirectory.get(execution.agent.session), execution);
-    },
+  const turns = new ChannelTurns({
+    stateOf: session => projection.stateOf(session), findAgent: id => ctx.agents.get(id),
   });
-  const withTools = (native, channelIdOf) => ({
+  const forChannel = (native, channelIdOf) => ({
     isSafe: id => native.isSafe(id), model: () => native.model(), stopWork: () => native.stopWork(),
     isSafeForDelivery: id => ctx.agents.get(id) ? native.hasSession(id) : true,
     interrupt: id => native.interrupt?.(id),
     hasSession: id => native.hasSession(id),
     run(entry, signal, onUpdate) {
       const channelId = channelIdOf(entry);
-      const getPolicy = () => policyOf(channelId);
-      const attachmentPaths = (entry.content ?? []).filter(block => block.type === 'file')
-        .map(block => ctx.attachments.fileHostPath(block.attachment)).filter(path => typeof path === 'string');
-      return native.run({ ...entry, allowReasoning: channelId !== 'weixin'
-        && (getPolicy().showReasoning ?? entry.allowReasoning) === true,
-        admitTools: agent => tools.bind(agent, { messageId: entry.messageId, signal, channelId, getPolicy, attachmentPaths }),
+      return native.run({ ...entry,
+        bindTurn: agent => turns.bind(agent, { agent, messageId: entry.messageId, signal, channelId }),
       }, signal, onUpdate);
     },
   });
-  async function availableToolChoices() {
-    const scopes = await Promise.allSettled([PRESET_ID, CHANNEL_PRESET_ID].map(id => ctx.agentPresets.acquireScope(id)));
-    const available = ctx.tools.schemas();
-    for (const scope of scopes) {
-      if (scope.status !== 'fulfilled') continue;
-      try { available.push(...ctx.tools.schemas(scope.value.key)); }
-      finally { await scope.value[Symbol.asyncDispose](); }
-    }
-    return channelToolChoices(available);
-  }
   backend = new AgentBackend(ctx, { projection, workspaceDir, workspaceForSession: workspaceForWeixin,
-    commandReceipts, timeoutMs: config.responseTimeoutMs });
+    commandReceipts, timeoutMs: config.responseTimeoutMs, reportToolApprovals: true });
   bridge = new WeixinBridge({
     store: { read: () => domain.global.get(), write: state => domain.global.set(state) },
-    accounts: accountStore(ctx.credentials), backend: withTools(backend, () => 'weixin'), workspaceDir,
+    accounts: accountStore(ctx.credentials), backend: forChannel(backend, () => 'weixin'), workspaceDir,
     contextBudget: config.contextBudget, pollTimeoutMs: config.pollTimeoutMs,
     admitAttachments: inputs => admitAttachments(ctx.attachments, inputs),
-    deliveryOptions: () => ({ ...policyOf('weixin'), blockStreaming: policyOf('weixin').streaming === true }),
+    deliveryOptions: () => {
+      const options = replyOptionsOf('weixin');
+      return { ...options, blockStreaming: options.streaming === true };
+    },
     qrCode: async content => {
       if (typeof content !== 'string' || !content || content.length > 8192) {
         throw new BridgeError('AUTH_REQUIRED', '微信返回的二维码无效，请重试。', 502);
@@ -196,12 +179,12 @@ export async function apply(ctx, config) {
   channelDomain = await ctx.storageDomain.open(channelDomainSpec);
   channelBackend = new AgentBackend(ctx, {
     projection, workspaceDir: channelWorkspace, timeoutMs: config.responseTimeoutMs,
-    presetId: CHANNEL_PRESET_ID, sessionPattern: CHANNEL_SESSION_PATTERN,
+    legacyPresetId: LEGACY_CHANNEL_PRESET_ID, sessionPattern: CHANNEL_SESSION_PATTERN,
     workspaceForSession, commandReceipts,
   });
   channels = new ChannelBridge({
-    catalog: items, accounts: channelAccounts(ctx.credentials), backend: withTools(channelBackend, entry => entry.channelId),
-    getPreferences: policyOf,
+    catalog: items, accounts: channelAccounts(ctx.credentials), backend: forChannel(channelBackend, entry => entry.channelId),
+    getPreferences: replyOptionsOf,
     store: { read: () => channelDomain.global.get(), write: state => channelDomain.global.set(state) },
     admitAttachments: inputs => admitAttachments(ctx.attachments, inputs),
     create(settings, callbacks, id) {
@@ -214,12 +197,7 @@ export async function apply(ctx, config) {
       return createNanobotTransport(id, settings, callbacks, { python: config.nanobotPython });
     },
   });
-  ctx.effect(() => ctx.on('tools/pre-execute', (execution, next) => tools.prepare(execution,
-    request => ctx.get('approval')?.request(request), next), { global: true, prepend: true }));
-  ctx.effect(() => ctx.tools.guard(execution => tools.denial(execution)));
-  ctx.effect(() => ctx.on('agent/created', ({ agent }) => { tools.root(agent); tools.maskIdle(agent); }, { global: true }));
-  ctx.effect(() => ctx.on('agent/disposed', ({ agent }) => { tools.unmask(agent); }, { global: true }));
-  ctx.effect(() => () => tools.close());
+  // DSH resolves step tools before appending the claimed inbox messages.
   ctx.effect(() => ctx.tools.register({
     name: 'channel_send',
     description: 'Send a message, reply options, or up to four small files to this Agent’s authorized chat. Paths stay inside its isolated workspace. With no arguments, return the workspace path.',
@@ -232,8 +210,8 @@ export async function apply(ctx, config) {
     output: { schema: { type: 'object', properties: { queued: { type: 'boolean' }, workspace: { type: 'string' } }, additionalProperties: false },
       render: (_args, result) => [{ type: 'text', text: result.workspace ?? 'Message queued for this channel conversation.' }] },
     async execute({ text = '', files = [], buttons = [] }, execution) {
-      const turn = tools.active(execution);
-      if (!turn || !tools.permits(execution)) throw new BridgeError('FORBIDDEN', '当前会话没有渠道发送权限。', 403);
+      const turn = turns.active(execution.agent, execution.signal);
+      if (!turn) throw new BridgeError('FORBIDDEN', '当前会话没有渠道发送权限。', 403);
       const workspace = await toolWorkspace(turn);
       const choices = channelButtons(buttons);
       const message = text.trim();
@@ -248,7 +226,9 @@ export async function apply(ctx, config) {
         remaining -= Buffer.from(file.data, 'base64').length;
         attachments.push(file);
       }
-      if (!tools.permits(execution)) throw new BridgeError('FORBIDDEN', '当前会话的渠道发送权限已撤销。', 403);
+      if (turns.active(execution.agent, execution.signal) !== turn) {
+        throw new BridgeError('FORBIDDEN', '当前会话的渠道发送权限已撤销。', 403);
+      }
       const sender = turn.channelId === 'weixin' ? bridge : channels;
       const queued = await sender.sendToSession(turn.agent.id, {
         id: execution.callId || randomUUID(), attachments, buttons: choices,
@@ -258,7 +238,7 @@ export async function apply(ctx, config) {
       if (!queued) throw new BridgeError('BUSY', '渠道当前无法接收该消息。', 409);
       return { queued };
     },
-  }));
+  }, { when: ({ agent, signal }) => Boolean(turns.bound(agent, signal)) }));
   ctx.provide('weixinBridge', bridge);
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/plugins/weixin-bridge/api',
     handler: createApiHandler({ connection: ctx.connection, bridge }) }));
@@ -268,10 +248,10 @@ export async function apply(ctx, config) {
         if (action === 'preferences.update') {
           const item = items.find(item => item.id === args.id);
           if (!item || (args.preferences && Object.keys(args.preferences)
-            .some(key => key !== 'allowedTools' && !item.replyOptions.includes(key)))) {
+            .some(key => !item.replyOptions.includes(key)))) {
             throw new BridgeError('INVALID_REQUEST', '渠道不支持此选项。');
           }
-          policies.set(args.id, await preferences.update(args.id, args.preferences));
+          replySettings.set(args.id, await preferences.update(args.id, args.preferences));
         }
         const snapshot = await channels.action(action === 'preferences.update' ? 'status' : action, args);
         const weixin = toolSnapshot(bridge.snapshot());
@@ -281,8 +261,8 @@ export async function apply(ctx, config) {
           lastMessageAt: weixin.lastPollAt, pendingMessages: weixin.pendingReplies,
           allowedSenders: weixin.users.filter(user => user.status === 'approved').map(user => user.userId),
         });
-        return { ...snapshot, channels: snapshot.channels.map(item => ({ ...item, preferences: policyOf(item.id) })),
-          toolChoices: await availableToolChoices(), upstreamCommit: catalog.upstreamCommit };
+        return { ...snapshot, channels: snapshot.channels.map(item => ({ ...item, preferences: replyOptionsOf(item.id) })),
+          upstreamCommit: catalog.upstreamCommit };
       } },
       header: 'x-dsh-channel-bridge', maxBytes: 32 * 1024, validate: validateChannelRequest,
     }) }));
@@ -294,13 +274,16 @@ export async function apply(ctx, config) {
     }, required: ['action'], additionalProperties: false },
     output: { schema: { type: 'object', properties: {}, additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] },
-    async execute(args) {
+    async execute(args, execution) {
+      if (!turns.canManageBridge(execution.agent)) {
+        throw new BridgeError('FORBIDDEN', '请在 DSH 中管理微信连接。', 403);
+      }
       const action = { status: 'status', pause: 'connection.pause', disconnect: 'connection.disconnect' }[args?.action];
       if (!action) throw new BridgeError('INVALID_REQUEST', '不支持的微信管理操作。');
       return toolSnapshot(await bridge.action(action));
     },
     isConcurrencySafe: args => args?.action === 'status',
-  }));
+  }, { when: ({ agent }) => turns.canManageBridge(agent) }));
   await bridge.initialize();
   await channels.initialize();
   const weixinSessions = () => bridge.snapshot().users.filter(user => user.status === 'approved' && user.sessionId).map(user => user.sessionId);
@@ -323,8 +306,6 @@ export async function apply(ctx, config) {
     if (!(isWeixin ? weixinSessions() : channelSessions()).includes(sessionId) || !await target.hasSession(sessionId)) {
       throw new BridgeError('FORBIDDEN', '此渠道会话已解除关联。', 403);
     }
-    const agent = await target.ensureAgent({ sessionId });
-    tools.maskIdle(agent);
-    return agent;
+    return target.ensureAgent({ sessionId });
   }, { prepend: true }));
 }
