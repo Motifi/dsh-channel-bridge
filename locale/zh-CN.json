@@ -90,6 +90,8 @@
     "users.onlyOne": "已有其他用户获批，请先撤销该用户的授权，再批准其他用户。",
     "users.revokedHint": "如需重新申请，请在微信发送新文本，并使用新的配对码。",
     "users.deliveryFailed": "最近的消息处理或发送失败，请检查连接后在微信重新发送文本。",
+    "users.toolApprovalPending": "等待在 DSH 批准",
+    "users.sessionDetails": "会话详情",
     "users.sessionLabel": "DSH 会话 ID",
     "users.sessionPending": "已批准。请在微信再发一条文本，创建您的会话。",
     "users.historyHint": "每位用户的 DSH 会话独立持久保存；撤销授权或断开连接不会删除历史。",

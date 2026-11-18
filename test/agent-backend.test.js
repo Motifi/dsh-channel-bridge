@@ -50,6 +50,7 @@ function harness(t, options = {}) {
   const listeners = new Set();
   const streamListeners = new Set();
   const owned = new Set();
+  const remoteEvents = [];
   const calls = {
     get: [], stat: [], create: [], resume: [], mount: [], followup: [], remove: [], cancel: [], dispose: [], flush: 0, whenIdle: 0,
   };
@@ -188,6 +189,7 @@ function harness(t, options = {}) {
     commands: options.commands,
     llm: options.llm,
     skills: options.skills,
+    typertGateway: { getPendingRemoteEvents: () => remoteEvents },
     on(name, callback, options) {
       assert.ok(['session/event', 'agent/assistant-stream'].includes(name));
       if (name === 'agent/assistant-stream') assert.equal(options?.global, true);
@@ -201,7 +203,7 @@ function harness(t, options = {}) {
     set: async state => { receipts = commandDomainSpec.global.schema.parse(JSON.parse(JSON.stringify(state))); },
   });
   backend = new AgentBackend(ctx, { projection, workspaceDir: WORKSPACE, timeoutMs: options.timeoutMs ?? 1_000,
-    workspaceForSession: options.workspaceForSession, commandReceipts });
+    workspaceForSession: options.workspaceForSession, commandReceipts, reportToolApprovals: options.reportToolApprovals });
   function borrow(id = SESSION, changes) {
     const agent = makeAgent(id, changes);
     live.set(id, agent);
@@ -246,7 +248,7 @@ function harness(t, options = {}) {
   });
   return {
     backend, ctx, calls, cells, presets, listeners, live, projection, streamListeners,
-    makeAgent, makeHandle, borrow, publish, notify, seedQueued, admit, complete,
+    makeAgent, makeHandle, borrow, publish, notify, seedQueued, admit, complete, remoteEvents,
     emitStream(agent, frame) { for (const listener of streamListeners) listener({ agent, frame }); },
   };
 }
@@ -291,6 +293,61 @@ test('live events are bounded and tied to the admitted message and exact attempt
   assert.ok(updates.some(update => update.type === 'progress'));
   assert.doesNotMatch(JSON.stringify(updates), /private|hidden|foreign|unadmitted|old attempt/i);
   assert.equal(h.streamListeners.size, 0);
+  assert.equal(h.listeners.size, 0);
+});
+
+test('only unresolved native approvals for the active WeChat turn are reported', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const h = harness(t, { reportToolApprovals: true, timeoutMs: 10_000 });
+  const item = entry('approval');
+  const agent = h.borrow();
+  const other = h.borrow(OTHER_SESSION);
+  const updates = [];
+  const pending = observe(h.backend.run(item, undefined, update => { if (update.type === 'approval') updates.push(update); }));
+  await nextTick();
+  h.remoteEvents.push({ event: 'approval/request', agentId: SESSION });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [], 'no admitted WeChat turn can own the approval yet');
+  h.remoteEvents.length = 0;
+  h.admit(agent, item);
+  h.remoteEvents.push({ event: 'approval/request', agentId: other.id },
+    { event: 'user-questions/request', agentId: SESSION });
+  h.publish(agent, 'approval/asked', { id: 'automatic-decision' });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, []);
+
+  h.remoteEvents.push(
+    { event: 'approval/request', agentId: SESSION, body: 'private tool arguments' },
+    { event: 'approval/request', agentId: SESSION });
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [{ type: 'approval', pending: true }]);
+
+  h.remoteEvents.pop();
+  t.mock.timers.tick(500);
+  assert.equal(updates.length, 1, 'another tool decision is still pending');
+  h.remoteEvents.pop();
+  t.mock.timers.tick(500);
+  assert.deepEqual(updates.at(-1), { type: 'approval', pending: false });
+  h.complete(agent, item, 'reply');
+  assert.equal((await pending).text, 'reply');
+});
+
+test('a resumed live turn exposes its existing approval and clears it on interruption', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const h = harness(t, { reportToolApprovals: true, timeoutMs: 10_000 });
+  const item = entry('approval-ended');
+  const agent = h.borrow();
+  const updates = [];
+  h.admit(agent, item);
+  h.remoteEvents.push({ event: 'approval/request', agentId: SESSION });
+  const pending = observe(h.backend.run(item, undefined, update => { if (update.type === 'approval') updates.push(update.pending); }));
+  await nextTick();
+  t.mock.timers.tick(1_000);
+  assert.deepEqual(updates, [true]);
+
+  h.complete(agent, item, '', 'interrupted');
+  await pending;
+  assert.deepEqual(updates, [true, false]);
   assert.equal(h.listeners.size, 0);
 });
 

@@ -323,6 +323,119 @@ test('WeChat clears its typing indicator after finalizing a turn', async () => {
   assert.equal(f.sends.at(-1).text, 'Ready.');
 });
 
+test('WeChat makes approval visible for the requesting sender and sends one notice per turn', async () => {
+  const f = fixture();
+  await f.approve('user-a');
+  await f.approve('user-b');
+  f.sends.length = 0;
+  const approvalViews = [];
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true, text: 'private tool arguments' });
+    approvalViews.push(f.bridge.snapshot().users.map(user => [user.userId, user.toolApprovalPending]));
+    await onUpdate({ type: 'approval', pending: false });
+    approvalViews.push(f.bridge.snapshot().users.map(user => user.toolApprovalPending));
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: 'Original final reply.' };
+  };
+
+  await f.bridge.receive(raw('needs-approval', 'user-a'), f.account().id, f.signal);
+  await f.runOnce();
+
+  assert.deepEqual(approvalViews, [[['user-a', true], ['user-b', undefined]], [undefined, undefined]]);
+  assert.deepEqual(f.bridge.snapshot().users.map(user => user.toolApprovalPending), [undefined, undefined]);
+  assert.equal(f.sends.length, 2);
+  assert.ok(f.sends.every(reply => reply.userId === 'user-a'));
+  assert.match(f.sends[0].text, /DSH.*批准[\s\S]*消息渠道.*微信/);
+  assert.doesNotMatch(f.sends[0].text, /private tool/);
+  assert.equal(f.sends[1].text, 'Original final reply.');
+});
+
+test('WeChat approval remains visible when the final reply needs the remaining send budget', async () => {
+  const f = fixture({ contextBudget: 4 });
+  await f.approve();
+  f.sends.length = 0;
+  let stateWhileWaiting;
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    stateWhileWaiting = f.bridge.snapshot().users[0].toolApprovalPending;
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(stateWhileWaiting, true);
+  assert.equal(f.sends.length, 4);
+  assert.ok(f.sends.every(reply => /^字+$/.test(reply.text)));
+  assert.equal(f.bridge.state.outbox[0].state, 'sent');
+});
+
+test('a WeChat approval notice reserves capacity for the final reply and earlier queued parts', async () => {
+  const f = fixture({ contextBudget: 5 });
+  await f.approve();
+  f.sends.length = 0;
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await f.bridge.sendToSession(entry.sessionId, { id: 'earlier-tool-output', text: 'Earlier output.' });
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.equal(f.sends[0].text, 'Earlier output.');
+  assert.equal(f.sends.slice(1).map(reply => reply.text).join(''), '字'.repeat(6200));
+  assert.deepEqual(f.bridge.state.outbox.map(item => item.state), ['sent', 'sent']);
+});
+
+test('a WeChat approval notice protects the final reply from output queued after approval', async () => {
+  const f = fixture({ contextBudget: 5 });
+  await f.approve();
+  f.sends.length = 0;
+  f.backend.run = async (entry, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    await onUpdate({ type: 'approval', pending: false });
+    await f.bridge.sendToSession(entry.sessionId, { id: 'tool-output-after-approval', text: 'Extra output.' });
+    return { state: 'completed', text: '字'.repeat(6200) };
+  };
+  await f.bridge.receive(raw('needs-approval'), f.account().id, f.signal);
+  await f.runOnce();
+  assert.match(f.sends[0].text, /DSH.*批准/);
+  assert.equal(f.sends.slice(1).map(reply => reply.text).join(''), '字'.repeat(6200));
+
+  await f.bridge.setContext(f.account().id, 'wx-owner', 'another-context');
+  await f.bridge.deliver(f.signal);
+  assert.equal(f.sends.at(-1).text, 'Extra output.');
+  assert.equal(f.sends.length, 6);
+});
+
+test('WeChat does not retry an ambiguous approval notice when resuming the same input', async () => {
+  const f = fixture();
+  await f.approve();
+  await f.bridge.receive(raw('interrupted-approval'), f.account().id, f.signal);
+  const stop = new AbortController();
+  const attempts = [];
+  f.client.sendText = async value => {
+    attempts.push(value);
+    throw Object.assign(new Error('send outcome unknown'), { kind: 'network' });
+  };
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    stop.abort();
+    signal.throwIfAborted();
+  };
+  await f.bridge.work(stop.signal);
+  assert.equal(f.persisted().inbox[0].state, 'submitted');
+  assert.equal(f.bridge.snapshot().users[0].toolApprovalPending, undefined);
+
+  await f.bridge.initialize();
+  f.client.sendText = async value => { attempts.push(value); return { ret: 0 }; };
+  f.backend.run = async (_, signal, onUpdate) => {
+    await onUpdate({ type: 'approval', pending: true });
+    return { state: 'completed', text: 'Final reply after restart.' };
+  };
+  await f.runOnce();
+  assert.equal(attempts.length, 2);
+  assert.match(attempts[0].text, /DSH.*批准/);
+  assert.equal(attempts[1].text, 'Final reply after restart.');
+});
+
 test('opt-in WeChat progress and streamed reply leave only the unsent tail in the final reply', async () => {
   const f = fixture({ deliveryOptions: () => ({ blockStreaming: true, sendProgress: true, sendToolHints: true }) });
   await f.approve();

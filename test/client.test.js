@@ -106,6 +106,17 @@ test('opens bridge conversations using DSH workspace navigation for tool approva
   assert.match(source, /h\(ChannelSessions, \{ sessions: selected\.sessions \}\)/);
 });
 
+test('approval status belongs to an approved sender with a WeChat session', () => {
+  const user = { userId: 'sender', status: 'approved', firstSeenAt: 1, lastSeenAt: 2,
+    sessionId: `wxbridge-${'a'.repeat(32)}` };
+  const accepts = changes => core.validSnapshot(snapshot({ enabled: true, users: [{ ...user, ...changes }] }));
+  assert.equal(accepts({}), true, 'older host snapshots have no approval flag');
+  assert.equal(accepts({ toolApprovalPending: true }), true);
+  assert.equal(accepts({ toolApprovalPending: 'true' }), false);
+  assert.equal(accepts({ toolApprovalPending: true, status: 'revoked' }), false);
+  assert.equal(accepts({ toolApprovalPending: true, sessionId: undefined }), false);
+});
+
 test('client contributes a single page after Automation tasks through the official navigation slots', () => {
   let registration;
   vm.runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value; } } } });
@@ -379,8 +390,9 @@ test('failed or unconfirmed replies have a prominent localized warning with no r
 });
 
 test('successful destructive actions route focus to a stable parent heading while cancellation restores the trigger', () => {
-  const begin = source.indexOf('function ConfirmControl(');
-  const end = source.indexOf('function SessionCopy(', begin);
+  const begin = source.indexOf('    function ConfirmControl(');
+  const end = source.indexOf('\n    function ', begin + 1);
+  assert.ok(begin >= 0 && end > begin, 'ConfirmControl is followed by another module factory function');
   const confirm = source.slice(begin, end);
   assert.match(confirm, /function dismiss\(\) \{ restoreTriggerOnCancel\.current = true; setConfirming\(false\); \}/);
   assert.match(confirm, /else if \(restoreTriggerOnCancel\.current\) \{[\s\S]*trigger\.current\?\.focus\(\)/);

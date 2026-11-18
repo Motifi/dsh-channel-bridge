@@ -95,6 +95,8 @@ window.__ModuleLoader__.load({
         "users.onlyOne": "Another user is already approved. Revoke that access before approving a different user.",
         "users.revokedHint": "To request access again, send a new text in WeChat and use the new pairing code.",
         "users.deliveryFailed": "The latest message could not be processed or delivered. Check the connection, then resend the text in WeChat.",
+        "users.toolApprovalPending": "Waiting for approval in DSH",
+        "users.sessionDetails": "Conversation details",
         "users.sessionLabel": "DSH session ID",
         "users.sessionPending": "Approved. Send another text in WeChat to create your conversation.",
         "users.historyHint": "Each user's DSH session persists independently. Revoking access or disconnecting does not delete conversation history.",
@@ -283,6 +285,8 @@ window.__ModuleLoader__.load({
         "users.onlyOne": "已有其他用户获批，请先撤销该用户的授权，再批准其他用户。",
         "users.revokedHint": "如需重新申请，请在微信发送新文本，并使用新的配对码。",
         "users.deliveryFailed": "最近的消息处理或发送失败，请检查连接后在微信重新发送文本。",
+        "users.toolApprovalPending": "等待在 DSH 批准",
+        "users.sessionDetails": "会话详情",
         "users.sessionLabel": "DSH 会话 ID",
         "users.sessionPending": "已批准。请在微信再发一条文本，创建您的会话。",
         "users.historyHint": "每位用户的 DSH 会话独立持久保存；撤销授权或断开连接不会删除历史。",
@@ -464,7 +468,9 @@ window.__ModuleLoader__.load({
         && Array.isArray(value.users) && value.users.every(user => user && typeof user.userId === 'string'
           && ['pending', 'approved', 'revoked'].includes(user.status)
           && Number.isFinite(user.firstSeenAt) && Number.isFinite(user.lastSeenAt)
-          && (user.sessionId === undefined || typeof user.sessionId === 'string'))
+          && (user.sessionId === undefined || typeof user.sessionId === 'string')
+          && (user.toolApprovalPending === undefined || (value.enabled && user.status === 'approved'
+            && user.toolApprovalPending === true && /^wxbridge-[a-f0-9]{32}$/.test(user.sessionId))))
         && Number.isSafeInteger(value.pendingReplies) && value.pendingReplies >= 0
         && Number.isSafeInteger(value.failedReplies) && value.failedReplies >= 0
         && (value.lastPollAt === null || Number.isFinite(value.lastPollAt)));
@@ -813,6 +819,8 @@ window.__ModuleLoader__.load({
 .wxb-status{display:inline-flex;align-items:center;gap:8px;min-width:0}.wxb-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--dsw-alias-state-idle-primary)}.wxb-dot[data-status=connected],.wxb-dot[data-status=approved]{background:var(--dsw-alias-state-success-primary)}.wxb-dot[data-status=connecting],.wxb-dot[data-status=paused],.wxb-dot[data-status=pending],.wxb-dot[data-status=auth-required]{background:var(--dsw-alias-state-warn-primary)}.wxb-dot[data-status=error]{background:var(--dsw-alias-state-error-primary)}
 .wxb-qrrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px}.wxb-qr{width:200px;height:200px;max-width:100%;object-fit:contain;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}.wxb-qrtext{flex:1;min-width:min(220px,100%);display:flex;flex-direction:column;gap:10px}.wxb-user{display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px 0;border-top:.5px solid var(--dsw-alias-border-l2)}.wxb-user:first-child{padding-top:0;border-top:0}.wxb-userid{font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:text}
 .wxb-details{display:grid;grid-template-columns:minmax(110px,160px) minmax(0,1fr);gap:8px 16px;font-size:13px;line-height:20px}.wxb-details dt{color:var(--dsw-alias-label-secondary)}.wxb-details dd{margin:0;min-width:0;overflow-wrap:anywhere;user-select:text}.wxb-code{font:inherit;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.wxb-session{display:block;max-width:100%;padding:4px 0;border-radius:3px;font:inherit;font-size:13px;overflow-wrap:anywhere;user-select:all}.wxb-confirm{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wxb-error{color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}.wxb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.wxb-approval{color:var(--dsw-alias-label-primary)}
+.wxb-session-details summary{width:fit-content;cursor:pointer;color:var(--dsw-alias-label-secondary);border-radius:3px}.wxb-session-details[open] summary{margin-bottom:8px}
 .wxb-page{height:100%;min-height:0;min-width:0;overflow:auto;padding:24px clamp(16px,5vw,56px);background:var(--dsw-alias-bg-base)}
 .wxb-page>.wxb{max-width:960px;margin-inline:auto}.wxb-page h1{font-size:26px;line-height:34px;font-weight:550;margin:0}
 .wxb-crumb{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 4px;margin-inline-start:-4px;border:0;border-radius:4px;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12.5px;cursor:pointer}
@@ -919,31 +927,31 @@ window.__ModuleLoader__.load({
           } })));
     }
 
-    function SessionCopy({ t, sessionId, openSession }) {
+    function SessionDetails({ t, sessionId }) {
       const [copy, setCopy] = React.useState('idle');
       const mounted = React.useRef(true);
       React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-      return h('div', { className: 'wxb-stack' },
-        h('span', { className: 'wxb-muted' }, t('users.sessionLabel')),
-        h('code', { className: 'wxb-session', tabIndex: 0, 'aria-label': t('users.sessionLabel') }, sessionId),
-        h('div', { className: 'wxb-actions' }, openSession ? h(ActionButton, {
-          label: t('features.openSession'), onClick: () => openSession(sessionId),
-        }) : null, h(ActionButton, {
-          label: t('actions.copy'), busy: copy === 'busy', busyLabel: t('busy.copy'),
-          reason: copy === 'busy' ? t('busy.copy') : null,
-          onClick: async () => {
-            if (copy === 'busy') return;
-            setCopy('busy');
-            try {
-              if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('clipboard');
-              await navigator.clipboard.writeText(sessionId);
-              if (mounted.current) setCopy('done');
-            } catch (_) { if (mounted.current) setCopy('error'); }
-          },
-        })),
-        h('p', { role: copy === 'error' ? 'alert' : 'status', 'aria-live': 'polite',
-          className: copy === 'error' ? 'wxb-error' : 'wxb-muted' },
-        copy === 'error' ? t('errors.clipboard') : copy === 'done' ? t('actions.copied') : null));
+      return h('details', { className: 'wxb-session-details' },
+        h('summary', { className: 'wxb-focus-target' }, t('users.sessionDetails')),
+        h('div', { className: 'wxb-stack' },
+          h('span', { className: 'wxb-muted' }, t('users.sessionLabel')),
+          h('code', { className: 'wxb-session', tabIndex: 0, 'aria-label': t('users.sessionLabel') }, sessionId),
+          h('div', { className: 'wxb-actions' }, h(ActionButton, {
+            label: t('actions.copy'), busy: copy === 'busy', busyLabel: t('busy.copy'),
+            reason: copy === 'busy' ? t('busy.copy') : null,
+            onClick: async () => {
+              if (copy === 'busy') return;
+              setCopy('busy');
+              try {
+                if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('clipboard');
+                await navigator.clipboard.writeText(sessionId);
+                if (mounted.current) setCopy('done');
+              } catch (_) { if (mounted.current) setCopy('error'); }
+            },
+          })),
+          h('p', { role: copy === 'error' ? 'alert' : 'status', 'aria-live': 'polite',
+            className: copy === 'error' ? 'wxb-error' : 'wxb-muted' },
+          copy === 'error' ? t('errors.clipboard') : copy === 'done' ? t('actions.copied') : null)));
     }
 
     return {
@@ -1033,6 +1041,7 @@ window.__ModuleLoader__.load({
             : !/^[0-9]{8}$/.test(code) ? t('disabled.code') : null);
           const localFailure = state.actionError && state.actionError.action === 'user.approve'
             && state.actionError.userId === user.userId ? state.actionError : null;
+          const waitingForApproval = user.toolApprovalPending === true && state.online && !state.transportError;
           React.useEffect(() => { if (user.status !== 'pending') setCode(''); }, [user.status]);
           return h('article', { className: 'wxb-user' },
             h('div', { className: 'wxb-rowhead' },
@@ -1071,7 +1080,15 @@ window.__ModuleLoader__.load({
             }))) : null,
             user.status === 'revoked' ? h('p', { className: 'wxb-muted' }, t('users.revokedHint')) : null,
             user.lastError ? h('p', { className: 'wxb-error' }, t('users.deliveryFailed')) : null,
-            user.sessionId ? h(SessionCopy, { t, sessionId: user.sessionId, openSession })
+            user.sessionId ? h('div', { className: 'wxb-stack' },
+              h('div', { role: 'status', 'aria-live': 'polite', 'aria-atomic': true },
+                waitingForApproval ? h('span', { className: 'wxb-status wxb-approval' },
+                  h(StatusDot, { status: 'pending' }), t('users.toolApprovalPending')) : null),
+              h('div', { className: 'wxb-actions' }, h(ActionButton, {
+                label: t('features.openSession'), variant: waitingForApproval ? 'primary' : undefined,
+                onClick: () => openSession(user.sessionId),
+              })),
+              h(SessionDetails, { t, sessionId: user.sessionId }))
               : user.status === 'approved' ? h('p', { className: 'wxb-muted' }, t('users.sessionPending')) : null);
         }
 

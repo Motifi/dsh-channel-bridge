@@ -64,7 +64,7 @@ function accountStore(credentials) {
 }
 function toolSnapshot(snapshot) {
   // QR content establishes authority and is deliberately user-only, even as an image.
-  return { ...snapshot, login: snapshot.login ? {
+  return { ...snapshot, users: snapshot.users.map(({ toolApprovalPending, ...user }) => user), login: snapshot.login ? {
     status: snapshot.login.status, expiresAt: snapshot.login.expiresAt,
     verificationFailed: snapshot.login.verificationFailed,
   } : null };
@@ -157,7 +157,7 @@ export async function apply(ctx, config) {
     },
   });
   backend = new AgentBackend(ctx, { projection, workspaceDir, workspaceForSession: workspaceForWeixin,
-    commandReceipts, timeoutMs: config.responseTimeoutMs });
+    commandReceipts, timeoutMs: config.responseTimeoutMs, reportToolApprovals: true });
   bridge = new WeixinBridge({
     store: { read: () => domain.global.get(), write: state => domain.global.set(state) },
     accounts: accountStore(ctx.credentials), backend: forChannel(backend, () => 'weixin'), workspaceDir,

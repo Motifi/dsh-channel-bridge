@@ -90,6 +90,8 @@
     "users.onlyOne": "Another user is already approved. Revoke that access before approving a different user.",
     "users.revokedHint": "To request access again, send a new text in WeChat and use the new pairing code.",
     "users.deliveryFailed": "The latest message could not be processed or delivered. Check the connection, then resend the text in WeChat.",
+    "users.toolApprovalPending": "Waiting for approval in DSH",
+    "users.sessionDetails": "Conversation details",
     "users.sessionLabel": "DSH session ID",
     "users.sessionPending": "Approved. Send another text in WeChat to create your conversation.",
     "users.historyHint": "Each user's DSH session persists independently. Revoking access or disconnecting does not delete conversation history.",
